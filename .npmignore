@@ -1,0 +1,27 @@
+# 仅发布编译产物,排除源码与开发期文件
+src/
+bin/
+tests/
+*.test.ts
+*.spec.ts
+
+# 配置与文档
+tsconfig.json
+.eslintrc*
+.prettierrc*
+.github/
+.gitignore
+
+# 依赖与日志
+node_modules/
+*.log
+coverage/
+
+# 编辑器/OS
+.DS_Store
+.vscode/
+.idea/
+
+# Agents
+.claude/
+plan.md
