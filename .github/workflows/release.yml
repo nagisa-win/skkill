@@ -31,11 +31,16 @@ jobs:
                   fetch-depth: 0
                   token: ${{ secrets.GITHUB_TOKEN }}
 
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
+              with:
+                  version: 10
+
             - name: Setup Node
               uses: actions/setup-node@v4
               with:
                   node-version: '20'
-                  cache: npm
+                  cache: pnpm
                   registry-url: 'https://registry.npmjs.org/'
 
             - name: Read version
@@ -71,20 +76,20 @@ jobs:
 
             - name: Install
               if: steps.check.outputs.exists == 'false'
-              run: npm ci
+              run: pnpm install --frozen-lockfile
 
             - name: Verify (typecheck + test + build)
               if: steps.check.outputs.exists == 'false'
               run: |
-                  npm run typecheck
-                  npm test
-                  npm run build
+                  pnpm run typecheck
+                  pnpm test
+                  pnpm run build
 
             - name: Publish to npm
               if: steps.check.outputs.exists == 'false'
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-              run: npm publish --access public
+              run: pnpm publish --access public
 
             - name: Summary
               if: steps.check.outputs.exists == 'false'
