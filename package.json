@@ -1,0 +1,94 @@
+{
+    "name": "@steven-y/skkill",
+    "version": "0.1.1",
+    "description": "AI Agent Skill 包管理器 — 像 npm 一样管理 Skill,在 Claude Code / Codex / OpenCode 等多 Agent 间一键共享。onetool-first,GitHub 兜底",
+    "type": "module",
+    "bin": {
+        "skkill": "./dist/bin/skkill.js"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "engines": {
+        "node": ">=20",
+        "npm": ">=10"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json",
+        "dev": "tsx bin/skkill.ts",
+        "start": "node dist/bin/skkill.js",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "contributors": "tsx scripts/contributors.ts",
+        "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.30.0",
+        "chalk": "^5.3.0",
+        "commander": "^12.1.0",
+        "execa": "^9.5.0",
+        "gray-matter": "^4.0.3",
+        "inquirer": "^9.3.7",
+        "openai": "^4.71.0",
+        "ora": "^8.1.0",
+        "simple-git": "^3.27.0",
+        "unzipper": "^0.12.3",
+        "yaml": "^2.9.0",
+        "zod": "^3.23.8"
+    },
+    "devDependencies": {
+        "@types/inquirer": "^9.0.7",
+        "@types/node": "^22.7.0",
+        "@types/unzipper": "^0.10.10",
+        "@typescript-eslint/eslint-plugin": "^8.61.1",
+        "@typescript-eslint/parser": "^8.61.1",
+        "all-contributors-cli": "^6.26.1",
+        "eslint": "^9.39.4",
+        "prettier": "^3.8.4",
+        "tsx": "^4.19.0",
+        "typescript": "^5.5.0",
+        "typescript-eslint": "^8.61.1",
+        "vitest": "^2.1.0"
+    },
+    "keywords": [
+        "ai",
+        "agent",
+        "skill",
+        "claude-code",
+        "codex",
+        "opencode",
+        "package-manager",
+        "onetool",
+        "mcp"
+    ],
+    "license": "MIT",
+    "author": {
+        "name": "steven-y",
+        "url": "https://github.com/nagisa-win"
+    },
+    "contributors": [
+        {
+            "name": "nagisa-win",
+            "url": "https://github.com/nagisa-win"
+        }
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nagisa-win/skkill.git"
+    },
+    "homepage": "https://github.com/nagisa-win/skkill#readme",
+    "bugs": {
+        "url": "https://github.com/nagisa-win/skkill/issues"
+    },
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
+    }
+}
