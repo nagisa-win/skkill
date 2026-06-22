@@ -1,0 +1,38 @@
+name: Update contributors
+
+# 自动维护 README 致谢区的贡献者头像墙
+# 触发方式:
+#   1) push 到 main 后自动跑 (按 commit history 重算)
+#   2) 在任意 issue/PR 评论里 @all-contributors add <username> <contribution>
+# 首次启用需在仓库里邀请 @all-contributors-bot 为协作者
+
+on:
+    push:
+        branches: [main]
+    issue_comment:
+        types: [created]
+
+permissions:
+    contents: write
+    issues: write
+    pull-requests: write
+
+jobs:
+    all-contributors:
+        runs-on: ubuntu-latest
+        if: |
+            (github.event_name == 'push') ||
+            (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@all-contributors'))
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Run all-contributors-cli
+              uses: all-contributors-cli/all-contributors-action@main
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  # 首次会自动检测贡献类型; 后续按 commit / issue 评论追加
+                  args: 'readme --contributorsPerLine 7 --badgeOffsetSkip 2'
