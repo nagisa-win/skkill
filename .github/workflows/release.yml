@@ -1,0 +1,94 @@
+name: Release
+
+# 合入 main 后:
+#   1) 读 package.json 的 version 字段
+#   2) 如果 tag v<version> 还不存在 → 打 annotated tag
+#   3) 跑 typecheck + test + build
+#   4) npm publish 到 npmjs.com (使用 NPM_TOKEN 环境变量)
+# 想发版: 改 package.json 的 version 字段并合入 main 即可
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - 'package.json'
+    workflow_dispatch:
+        inputs:
+            version:
+                description: '覆盖 package.json 的 version (留空用 package.json 当前值)'
+                required: false
+
+permissions:
+    contents: write # 需要创建 tag
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  registry-url: 'https://registry.npmjs.org/'
+
+            - name: Read version
+              id: version
+              run: |
+                  if [ -n "${{ inputs.version }}" ]; then
+                    VERSION="${{ inputs.version }}"
+                  else
+                    VERSION=$(node -p "require('./package.json').version")
+                  fi
+                  # 去掉可能的 v 前缀
+                  VERSION="${VERSION#v}"
+                  echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+                  echo "Resolved version: ${VERSION}"
+
+            - name: Check tag does not exist
+              id: check
+              run: |
+                  if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+                    echo "exists=true" >> "$GITHUB_OUTPUT"
+                    echo "::warning::Tag v${{ steps.version.outputs.version }} 已存在,跳过本次发版"
+                  else
+                    echo "exists=false" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Create annotated tag
+              if: steps.check.outputs.exists == 'false'
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
+                  git push origin "v${{ steps.version.outputs.version }}"
+
+            - name: Install
+              if: steps.check.outputs.exists == 'false'
+              run: npm ci
+
+            - name: Verify (typecheck + test + build)
+              if: steps.check.outputs.exists == 'false'
+              run: |
+                  npm run typecheck
+                  npm test
+                  npm run build
+
+            - name: Publish to npm
+              if: steps.check.outputs.exists == 'false'
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+              run: npm publish --access public
+
+            - name: Summary
+              if: steps.check.outputs.exists == 'false'
+              run: |
+                  echo "## 🚀 Released v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+                  echo "" >> "$GITHUB_STEP_SUMMARY"
+                  echo "Package: \`@steven-y/skkill@${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+                  echo "Tag: [v${{ steps.version.outputs.version }}](https://github.com/nagisa-win/skkill/releases/tag/v${{ steps.version.outputs.version }})" >> "$GITHUB_STEP_SUMMARY"
