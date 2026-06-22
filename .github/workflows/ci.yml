@@ -18,7 +18,8 @@ jobs:
               with:
                   node-version: ${{ matrix.node }}
                   cache: npm
-            - run: npm ci
+            - name: Install (with retry to mitigate flaky npm "Exit handler never called")
+              run: npm ci --fetch-retries 5 --fetch-retry-mintimeout 20000
             - run: npm run typecheck
             - run: npm test
             - run: npm run build
