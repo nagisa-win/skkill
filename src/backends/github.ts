@@ -1,15 +1,14 @@
 import { BaseBackend } from './base.js';
 import { clone, pull } from '../lib/git.js';
 import { readPackageJson } from '../lib/package-json.js';
+import { parseSource } from '../lib/source-parser.js';
 import { SkitError } from '../utils/logger.js';
+import { GITHUB_API, GITHUB_SKILL_KEYWORD } from '../constants.js';
 import type { ResolvedSource, FetchResult, SearchResult } from '../types/backend.js';
 
 // GitHub search backend: 直接搜 "skill" 关键字,不再用 topic 过滤
 // search 通过 GitHub REST API (search/repositories)
 // resolve / fetch / upgrade 走 git clone (与 GitBackend 一致)
-const GITHUB_API = 'https://api.github.com';
-const SEARCH_KEYWORD = 'skill';
-
 export class GitHubBackend extends BaseBackend {
     readonly id = 'github' as const;
     readonly displayName = 'GitHub (search)';
@@ -18,7 +17,7 @@ export class GitHubBackend extends BaseBackend {
         try {
             const ctrl = new AbortController();
             const timer = setTimeout(() => ctrl.abort(), 5000);
-            const res = await fetch(`${GITHUB_API}/search/repositories?q=${SEARCH_KEYWORD}&per_page=1`, {
+            const res = await fetch(`${GITHUB_API}/search/repositories?q=${GITHUB_SKILL_KEYWORD}&per_page=1`, {
                 signal: ctrl.signal,
                 headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'skkill' },
             });
@@ -33,7 +32,7 @@ export class GitHubBackend extends BaseBackend {
     async search(query: string, opts: { limit?: number } = {}): Promise<SearchResult[]> {
         const limit = opts.limit ?? 20;
         // 主关键词 (用户输入) 必带,辅关键词 "skill" 兜底,确保 ai-agent-skill 之类也能命中
-        const q = encodeURIComponent(`${query} ${SEARCH_KEYWORD}`);
+        const q = encodeURIComponent(`${query} ${GITHUB_SKILL_KEYWORD}`);
         const url = `${GITHUB_API}/search/repositories?q=${q}&per_page=${Math.min(limit, 100)}`;
         try {
             const res = await fetch(url, {
@@ -63,13 +62,15 @@ export class GitHubBackend extends BaseBackend {
     }
 
     async resolve(ref: string): Promise<ResolvedSource> {
-        if (/^[\w.-]+\/[\w.-]+$/.test(ref)) {
-            return { ref, kind: 'git', gitUrl: `https://github.com/${ref}.git` };
+        const parsed = parseSource(ref);
+        switch (parsed.kind) {
+            case 'owner-repo':
+                return { ref, kind: 'git', gitUrl: `https://github.com/${parsed.owner}/${parsed.repo}.git` };
+            case 'git-url':
+                return { ref, kind: 'git', gitUrl: parsed.url };
+            default:
+                throw new SkitError('E_BACKEND_UNAVAILABLE', `github backend 无法解析 ref: ${ref}`);
         }
-        if (ref.startsWith('git@') || ref.startsWith('https://') || ref.startsWith('git://') || ref.endsWith('.git')) {
-            return { ref, kind: 'git', gitUrl: ref };
-        }
-        throw new SkitError('E_BACKEND_UNAVAILABLE', `github backend 无法解析 ref: ${ref}`);
     }
 
     async fetch(source: ResolvedSource, destDir: string): Promise<FetchResult> {

@@ -80,7 +80,7 @@ export async function doctorCommand(): Promise<void> {
         detail: `${installRoot}${installExists ? '' : ' (not yet created)'}`,
     });
 
-    // LLM provider + key 状态
+    // LLM provider + key 状态 (供 publish 时自动生成 brief-desc/detail-doc)
     const llmEntries = listEffectiveConfig(config).filter(e => e.key.startsWith('llm.'));
     const llmProvider = llmEntries.find(e => e.key === 'llm.provider')?.value ?? 'anthropic';
     const llmKey = llmEntries.find(e => e.key === 'llm.apiKey')?.value;
@@ -88,8 +88,8 @@ export async function doctorCommand(): Promise<void> {
         name: 'LLM',
         ok: true,
         detail: llmKey
-            ? `${llmProvider} (key set, create/publish-brief 可用)`
-            : `${llmProvider} (no key, create/publish-brief 不可用,其它命令不受影响)`,
+            ? `${llmProvider} (key set, publish 自动生成 brief-desc 可用)`
+            : `${llmProvider} (no key, publish 自动生成 brief-desc 不可用, 其它命令不受影响)`,
     });
 
     // oneskill (publisher)

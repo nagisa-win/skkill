@@ -65,29 +65,17 @@ describe('getConfigValue — env > config > default', () => {
         expect(getConfigValue(ConfigKey.OnetoolApiBase, config)).toBe('http://cfg/api/v1');
     });
 
-    it('LLMApiKey: SKKILL_LLM_API_KEY env wins over ANTHROPIC_API_KEY', () => {
-        process.env.SKKILL_LLM_API_KEY = 'skkill-key';
+    it('LLMApiKey: ONLY SKKILL_LLM_API_KEY env is honored (no alias)', () => {
         process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-        const config: ConfigFile = { version: 1, llm: { provider: 'anthropic' } };
-        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBe('skkill-key');
-    });
-
-    it('LLMApiKey: provider=anthropic → falls back to ANTHROPIC_API_KEY', () => {
-        process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-        const config: ConfigFile = { version: 1, llm: { provider: 'anthropic' } };
-        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBe('anthropic-key');
-    });
-
-    it('LLMApiKey: provider=openai → falls back to OPENAI_API_KEY', () => {
         process.env.OPENAI_API_KEY = 'openai-key';
-        const config: ConfigFile = { version: 1, llm: { provider: 'openai' } };
-        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBe('openai-key');
+        const config: ConfigFile = { version: 1, llm: { provider: 'anthropic' } };
+        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBeUndefined();
     });
 
-    it('LLMApiKey: ANTHROPIC_API_KEY (alias env) beats config', () => {
-        process.env.ANTHROPIC_API_KEY = 'anthropic-key';
-        const config: ConfigFile = { version: 1, llm: { provider: 'anthropic', apiKey: 'cfg-key' } };
-        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBe('anthropic-key');
+    it('LLMApiKey: SKKILL_LLM_API_KEY env wins over config', () => {
+        process.env.SKKILL_LLM_API_KEY = 'skkill-key';
+        const config: ConfigFile = { version: 1, llm: { apiKey: 'cfg-key' } };
+        expect(getConfigValue(ConfigKey.LLMApiKey, config)).toBe('skkill-key');
     });
 });
 

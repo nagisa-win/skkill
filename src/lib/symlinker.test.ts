@@ -134,3 +134,29 @@ describe('unapplyFromAgents', () => {
         expect(results[0]!.error).toBeUndefined();
     });
 });
+
+// B1 路径穿越加固回归测试: 恶意 skillName 不应能逃出 skillsDir
+describe('[B1] path traversal protection', () => {
+    it('applySkillToAgent 拒绝 ../escape 名字', async () => {
+        const adapter = new FakeAdapter();
+        const malicious: InstalledSkill = { ...skill, name: '../escape' };
+        await expect(applySkillToAgent(adapter, malicious)).rejects.toThrow(SkitError);
+        // skillsDir 之外不应有任何文件被创建
+        const escapePath = path.join(workDir, 'escape');
+        const exists = await fs.stat(escapePath).catch(() => null);
+        expect(exists).toBeNull();
+    });
+
+    it('unapplySkillFromAgent 拒绝 ../escape 名字', async () => {
+        const adapter = new FakeAdapter();
+        // 即便真有 ../escape 这个软链,函数也应先在 assertPathSafe 这步拒绝
+        await expect(unapplySkillFromAgent(adapter, '../escape')).rejects.toThrow(SkitError);
+    });
+
+    it('applySkillToAgent 拒绝带斜杠的逃逸名字 (foo/../../../etc)', async () => {
+        const adapter = new FakeAdapter();
+        // path.join 会拼成 skillsDir/foo/../../../etc,resolve 后逃出 skillsDir
+        const malicious: InstalledSkill = { ...skill, name: 'foo/../../../etc' };
+        await expect(applySkillToAgent(adapter, malicious)).rejects.toThrow(SkitError);
+    });
+});

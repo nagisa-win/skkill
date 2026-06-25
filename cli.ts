@@ -6,7 +6,8 @@ import { upgradeCommand } from './src/commands/upgrade.js';
 import { linkCommand } from './src/commands/link.js';
 import { unlinkCommand } from './src/commands/unlink.js';
 import { searchCommand } from './src/commands/search.js';
-import { createCommand } from './src/commands/create.js';
+import { initCommand } from './src/commands/init.js';
+import { importCommand } from './src/commands/import.js';
 import { publishCommand } from './src/commands/publish.js';
 import { duplicateCommand } from './src/commands/duplicate.js';
 import { listCommand } from './src/commands/list.js';
@@ -73,13 +74,20 @@ program
     });
 
 program
-    .command('create <prompt>')
-    .description('用大模型根据自然语言描述创建 Skill')
+    .command('init <name>')
+    .description('生成空 Skill 骨架 (SKILL.md + package.json + references/scripts/assets 目录)')
+    .option('-d, --description <text>', '一句话描述 (默认留 TODO 占位)')
+    .action(async (name: string, opts: { description?: string }) => {
+        await initCommand(name, opts);
+    });
+
+program
+    .command('import <path>')
+    .description('把其他 Agent 的 skill 目录 mv 到 ~/.skkill/skills/ 并加入管理 (自动生成 package.json + lock)')
+    .option('--name <name>', '强制指定 skill name (默认从 SKILL.md frontmatter 读, 退化用目录名)')
     .option('-a, --agents <ids...>', '指定应用的 agent id 列表')
-    .option('-t, --type <type>', 'Skill 类型: workflow | api | mixed | reference (默认 workflow)')
-    .option('-l, --lang <lang>', 'LLM 输出语言: zh | en | bilingual (默认 bilingual)')
-    .action(async (prompt: string, opts: { agents?: string[]; type?: string; lang?: string }) => {
-        await createCommand(prompt, opts);
+    .action(async (sourcePath: string, opts: { name?: string; agents?: string[] }) => {
+        await importCommand(sourcePath, opts);
     });
 
 program
