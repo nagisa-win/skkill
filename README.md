@@ -16,9 +16,10 @@
 主要能力:
 
 - **onetool-first 搜索 / 安装** — 优先查 onetool 注册中心,下载后自动写入 `.skill-meta.json` 记录 skill_id;0 结果自动回退 GitHub
-- **LLM 生成 Skill** — 一句自然语言描述,自动产出符合 4-type taxonomy (workflow / api / mixed / reference) 的 SKILL.md + package.json + scripts/
+- **骨架 + coding agent 创建** — `init` 生成空 Skill + 内置给 Claude/Codex 的 PROMPT.md,真正内容编辑交给 coding agent
 - **本地校验** — frontmatter / 命令安全 / 资源可发现性 / 描述质量全查
 - **oneskill 联动发布** — shell out `oneskill create/update` 完成内网发布,自动回写 skill_id
+- **跨 Agent 迁移** — `import` 把别处的 skill 目录 mv 到 `~/.skkill/skills/` 并接管管理
 - **Git 兜底** — `git@…` URL 或 `owner/repo` 简写自动走 git backend,跨仓库结构都能正确识别 SKILL.md
 
 ## 快速上手
@@ -28,7 +29,6 @@
 - Node.js >= 20
 - git
 - (可选) 内网访问 onetool 才能搜到内网 Skill (需要先配置 `backend.onetool.apiBase`)
-- (可选) `ANTHROPIC_API_KEY` 或 `OPENAI_API_KEY` 用于 `create` 命令
 - (可选) `oneskill` CLI 用于 `publish` 命令
 
 ### 安装
@@ -44,7 +44,7 @@ npm install -g .
 ### 初始化
 
 ```bash
-skkill doctor    # 检查 Node / git / onetool / LLM key 状态
+skkill doctor    # 检查 Node / git / onetool / LLM key 状态 (LLM 仅 publish 用)
 ```
 
 首次运行会自动在 `~/.skkill/config.yaml` 生成配置模板。查看 / 编辑:
@@ -75,7 +75,6 @@ SKKILL_BACKEND_ONETOOL_API_BASE=http://env-override.example.com/api/v1 \
 | ConfigKey                 | 环境变量                                                         | 用途                                                      |
 | ------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
 | `backend.onetool.apiBase` | `SKKILL_BACKEND_ONETOOL_API_BASE`                                | onetool 内网 API 地址,留空则自动回退 GitHub               |
-| `llm.apiKey`              | `SKKILL_LLM_API_KEY` (或 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`) | `create` 命令用,可用环境变量替代                          |
 | `publisher.bin`           | `SKKILL_PUBLISHER_BIN`                                           | oneskill CLI 路径,默认探测 `~/.oneskill-cli/bin/oneskill` |
 
 其它配置 (GitHub token、LLM model、install root、publisher.minVersion 等) 都有合理默认值。
@@ -101,16 +100,31 @@ skkill install https://github.com/owner/repo -a claude-code   # 任意 git URL
 skkill apply claude-code    # 也支持 `skkill apply all`
 ```
 
-### 用 LLM 创建 Skill
+### 从其他 Agent 迁移 Skill
+
+如果你在 Claude Code / Codex / OpenCode 等其他 Agent 的 `skills/` 目录下已经有现成的 skill 想纳入 skkill 管理:
 
 ```bash
-skkill create "查询员工花名册" --type api --lang zh
+skkill import ~/.claude/skills/dodo-refactor-fe/    # 从 claude-code 接管
+skkill import ~/.codex/skills/my-skill --name my-skill -a claude-code   # 重命名 + 直接链接
 ```
 
-- `--type`:`workflow` (默认) / `api` / `mixed` / `reference`
-- `--lang`:`bilingual` (默认) / `zh` / `en`
+行为:
 
-生成后自动跑本地校验,有 error 会阻断。
+- **mv 而非 cp** — 源目录会被移到 `~/.skkill/skills/<name>/`,原路径不再可用(避免双份不同步)
+- **校验源** — 必须含 `SKILL.md`,否则报错;目标若是真目录则拒绝覆盖,若是 symlink 则替换
+- **自动生成 `package.json`** — 缺失时按 frontmatter 兜底补齐
+- **写 lock** — 加入 skkill 管理,后续 `validate` / `link` / `uninstall` 都能识别
+- **支持 `~/`** — `~` 自动展开为 `$HOME`
+- **拒绝套娃** — 源若在 `~/.skkill/skills/` 内会被拒绝(避免从自己管理的目录二次 import)
+
+### 初始化 Skill 骨架
+
+```bash
+skkill init my-skill -d "一句话描述用途"
+```
+
+会在 `~/.skkill/skills/my-skill/` 生成 SKILL.md / package.json / references/ / scripts/ / assets/ 空骨架,并把完整 **"交给 Claude/Codex 的 prompt 模板"** 写到 stdout 和 `PROMPT.md` — 直接复制粘贴给 coding agent 让它继续填充内容即可。
 
 ### 校验 Skill
 

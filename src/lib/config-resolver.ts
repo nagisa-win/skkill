@@ -54,37 +54,15 @@ function lookupInConfig(config: ConfigFile, key: ConfigKeyName): Primitive {
 // 主入口: 取一个 string 类型的配置 (process.env > config.json > 默认)
 export function getConfigValue(key: ConfigKeyName, config: ConfigFile): string | undefined {
     const envName = configKeyToEnv(key);
-    // 1) 显式 env 优先 (除 SKKILL_LLM_API_KEY 这类,允许走 ANTHROPIC_API_KEY 这种"通用"env)
     const envVal = process.env[envName];
     if (envVal !== undefined && envVal !== '') return envVal;
 
-    // 2) 兼容: 某些 key 也读行业通用 env (不强制)
-    const aliased = aliasEnv(key);
-    if (aliased) {
-        const v = process.env[aliased];
-        if (v !== undefined && v !== '') return v;
-    }
-
-    // 3) config.json
     const cfgVal = lookupInConfig(config, key);
     if (cfgVal !== undefined && cfgVal !== '') return String(cfgVal);
 
-    // 4) 硬编码默认
     const hard = HARDCODED_DEFAULT[key];
     if (hard !== undefined && hard !== '') return String(hard);
 
-    return undefined;
-}
-
-// 行业通用 env 变量名 (读 config.json 之前的兜底,优先级在 SKKILL_ 之后)
-// 主人已明确"外部 process.env 覆盖 config.json",所以通用 env 也算 env
-function aliasEnv(key: ConfigKeyName): string | undefined {
-    if (key === ConfigKey.LLMApiKey) {
-        const provider = process.env.SKKILL_LLM_PROVIDER ?? '';
-        if (provider === 'openai') return 'OPENAI_API_KEY';
-        if (provider === 'anthropic') return 'ANTHROPIC_API_KEY';
-        return process.env.OPENAI_API_KEY ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
-    }
     return undefined;
 }
 
@@ -118,10 +96,6 @@ export function listEffectiveConfig(config: ConfigFile): ConfigEntry[] {
         const envVal = process.env[envName];
         if (envVal !== undefined && envVal !== '') {
             return { key, value: envVal, source: 'env', envName };
-        }
-        const aliased = aliasEnv(key);
-        if (aliased && process.env[aliased]) {
-            return { key, value: process.env[aliased], source: 'env', envName: aliased };
         }
         const cfgVal = lookupInConfig(config, key);
         if (cfgVal !== undefined && cfgVal !== '') {

@@ -1,10 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 // 原子写入:先写 tmp,再 rename
+// tmp 名含 pid + 时间戳 + randomUUID,避免同进程并发写时撞名导致 rename ENOENT
 export async function atomicWrite(targetPath: string, content: string): Promise<void> {
     const dir = path.dirname(targetPath);
-    const tmp = path.join(dir, `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+    const tmp = path.join(
+        dir,
+        `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`
+    );
     await fs.writeFile(tmp, content, 'utf-8');
     await fs.rename(tmp, targetPath);
 }

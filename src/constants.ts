@@ -7,6 +7,7 @@ export const SKKILL_VERSION = '0.1.1';
 export const SKKILL_HOME = path.join(os.homedir(), '.skkill');
 export const CONFIG_PATH = path.join(SKKILL_HOME, 'config.yaml');
 export const DEFAULT_INSTALL_ROOT = path.join(SKKILL_HOME, 'skills');
+export const SKILL_LOCK_PATH = path.join(SKKILL_HOME, '.skill-lock.json');
 export const DEFAULT_BRANCH = 'main';
 
 // ====== Agent 默认 Skills 目录 ======
@@ -46,6 +47,8 @@ export const DEFAULT_LLM_MODELS = {
 
 // ====== GitHub search 默认关键词 (公开,非内网配置) ======
 export const GITHUB_SKILL_KEYWORD = 'skill';
+// GitHub 公开 API (非内网,固定值)
+export const GITHUB_API = 'https://api.github.com';
 
 // ====== Publisher 默认 (非内网值) ======
 export const ONESKILL_MIN_VERSION = '1.0.1';

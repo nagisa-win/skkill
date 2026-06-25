@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ensureDir, isSymlinkTo } from '../utils/paths.js';
 import { logger, SkitError } from '../utils/logger.js';
+import { assertPathSafe } from '../utils/sanitize.js';
 import type { BaseAdapter } from '../agents/base.js';
 import type { InstalledSkill } from '../types/skill.js';
 import type { AgentId } from '../types/agent.js';
@@ -10,6 +11,7 @@ import type { AgentId } from '../types/agent.js';
 export async function applySkillToAgent(adapter: BaseAdapter, skill: InstalledSkill): Promise<{ linkedAt: string }> {
     const skillsDir = adapter.defaultSkillsDir();
     const linkPath = path.join(skillsDir, skill.name);
+    assertPathSafe(skillsDir, linkPath);
     await ensureDir(skillsDir);
 
     // 已存在软链接且指向目标,跳过
@@ -33,7 +35,9 @@ export async function applySkillToAgent(adapter: BaseAdapter, skill: InstalledSk
 
 // 移除软链接 (拒绝删除真实目录)
 export async function unapplySkillFromAgent(adapter: BaseAdapter, skillName: string): Promise<void> {
-    const linkPath = path.join(adapter.defaultSkillsDir(), skillName);
+    const skillsDir = adapter.defaultSkillsDir();
+    const linkPath = path.join(skillsDir, skillName);
+    assertPathSafe(skillsDir, linkPath);
     const stats = await fs.lstat(linkPath).catch(() => null);
     if (!stats) return; // 不存在,静默忽略
     if (!stats.isSymbolicLink()) {

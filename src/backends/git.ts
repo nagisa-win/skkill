@@ -3,12 +3,13 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { BaseBackend } from './base.js';
 import { clone, pull } from '../lib/git.js';
+import { parseSource, resolveLocalPath } from '../lib/source-parser.js';
 import { SkitError } from '../utils/logger.js';
 import { readPackageJson } from '../lib/package-json.js';
 import type { ResolvedSource, FetchResult, SearchResult } from '../types/backend.js';
 
 // git backend:兜底 backend,不依赖 npx skill
-// 主要支持 git URL (git@, https://, .git 后缀) 和 owner/repo 简写
+// 主要支持 git URL (git@, https://, .git 后缀) / owner/repo 简写 / 本地路径
 export class GitBackend extends BaseBackend {
     readonly id = 'git' as const;
     readonly displayName = 'Git (GitHub)';
@@ -29,12 +30,17 @@ export class GitBackend extends BaseBackend {
     }
 
     async resolve(ref: string): Promise<ResolvedSource> {
-        if (isGitUrl(ref)) return { ref, kind: 'git', gitUrl: ref };
-        if (isLocalPath(ref)) return { ref, kind: 'git', gitUrl: `file://${path.resolve(ref)}` };
-        if (/^[\w.-]+\/[\w.-]+$/.test(ref)) {
-            return { ref, kind: 'git', gitUrl: `https://github.com/${ref}.git` };
+        const parsed = parseSource(ref);
+        switch (parsed.kind) {
+            case 'git-url':
+                return { ref, kind: 'git', gitUrl: parsed.url };
+            case 'local':
+                return { ref, kind: 'git', gitUrl: `file://${resolveLocalPath(parsed.path)}` };
+            case 'owner-repo':
+                return { ref, kind: 'git', gitUrl: `https://github.com/${parsed.owner}/${parsed.repo}.git` };
+            default:
+                throw new SkitError('E_BACKEND_UNAVAILABLE', `git backend 无法解析 ref: ${ref}`);
         }
-        throw new SkitError('E_BACKEND_UNAVAILABLE', `git backend 无法解析 ref: ${ref}`);
     }
 
     async fetch(source: ResolvedSource, destDir: string): Promise<FetchResult> {
@@ -54,13 +60,7 @@ export class GitBackend extends BaseBackend {
     }
 }
 
-function isGitUrl(s: string): boolean {
-    return s.startsWith('git@') || s.startsWith('https://') || s.startsWith('git://') || s.endsWith('.git');
-}
-
-function isLocalPath(s: string): boolean {
-    return s.startsWith('/') || s.startsWith('./') || s.startsWith('../') || s.startsWith('~/');
-}
+// isGitUrl / isLocalPath 已迁到 src/lib/source-parser.ts (统一 parseSource 入口)
 
 // BFS 找含 SKILL.md 的最近目录 (排除 .git 内部)
 // 顶层就有 SKILL.md → 直接返回 destDir
