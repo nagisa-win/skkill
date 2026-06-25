@@ -1,7 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 
-export const SKKILL_VERSION = '0.1.1';
+export const SKKILL_VERSION = '0.2.0';
 
 // ====== 路径常量 (内部分用,与内网配置无关) ======
 export const SKKILL_HOME = path.join(os.homedir(), '.skkill');
