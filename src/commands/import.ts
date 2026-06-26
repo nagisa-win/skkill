@@ -8,7 +8,7 @@ import { applyToAgents } from '../lib/symlinker.js';
 import { listAvailable, getAgent } from '../agents/index.js';
 import { logger, SkitError } from '../utils/logger.js';
 import { assertPathSafe, isPathSafe, sanitizeName } from '../utils/sanitize.js';
-import { expandHome, pathExists, ensureDir } from '../utils/paths.js';
+import { expandHome, ensureDir } from '../utils/paths.js';
 import { copyDir, safeRemove } from '../utils/fs.js';
 import type { ConfigFile } from '../types/config.js';
 import type { InstalledSkill } from '../types/skill.js';
