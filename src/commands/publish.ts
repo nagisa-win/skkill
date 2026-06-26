@@ -46,17 +46,25 @@ export async function publishCommand(
 
     // update 流程需要 skillId:从 .skill-meta.json 读,缺则走 oneskill info
     let skillId: number | undefined;
+    let shouldUpdate = opts.update;
+
     if (opts.update) {
-        const meta = await readMetaFile(skillPath);
-        if (meta.skill_id) {
-            skillId = Number(meta.skill_id);
-        } else {
-            const infos = await fetchOneskillInfo(skillPath);
-            const chosen = await pickOneskillInfo(infos);
-            skillId = chosen.skillId;
-        }
+        skillId = await resolveSkillIdForUpdate(skillPath);
         if (!Number.isFinite(skillId)) {
             throw new SkitError('E_INVALID_SKILL', `无法确定 skillId,请手动通过 --skill-id 指定`);
+        }
+    } else {
+        // 创建流程:检查是否已存在同名 skill
+        const existing = await detectExistingSkills(skillPath);
+        if (existing.length > 0) {
+            const result = await promptForExistingSkill(existing);
+            if (result.action === 'cancel') {
+                return;
+            }
+            if (result.action === 'update') {
+                skillId = result.skillId;
+                shouldUpdate = true;
+            }
         }
     }
 
@@ -97,7 +105,7 @@ export async function publishCommand(
 
     // 标签 (create 必填,缺则从 oneskill 拉列表交互式选择)
     let tagIds: number[] = [];
-    if (!opts.update) {
+    if (!shouldUpdate) {
         tagIds = parseTagIds(opts.tags);
         if (tagIds.length === 0) {
             tagIds = await pickTagIds();
@@ -116,7 +124,7 @@ export async function publishCommand(
     console.log(`  路径:        ${skillPath}`);
     console.log(`  标识:        ${identifier}`);
     console.log(`  名称:        ${displayName}`);
-    if (!opts.update) {
+    if (!shouldUpdate) {
         console.log(`  关联空间:    ${workspaceId !== undefined ? `#${workspaceId}` : '(隐藏空间)'}`);
         console.log(`  场景标签:    ${tagIds.join(', ')}`);
     } else {
@@ -140,7 +148,7 @@ export async function publishCommand(
     const spinner = logger.spinner('发布中…').start();
     let result;
     try {
-        if (opts.update) {
+        if (shouldUpdate) {
             result = await updatePublish({
                 skillPath,
                 skillId: skillId!,
@@ -256,4 +264,97 @@ async function pickOneskillInfo(infos: OnetoolInfo[]): Promise<OnetoolInfo> {
     });
     if (!chosen) throw new SkitError('E_INVALID_SKILL', 'pickOne 返回了未匹配项');
     return chosen;
+}
+
+interface ExistingSkill {
+    skillId: number;
+    skillName: string;
+    identifier: string;
+    source: 'local' | 'remote';
+}
+
+/** update 模式: 从本地 meta 或远程 info 解析 skillId */
+async function resolveSkillIdForUpdate(skillPath: string): Promise<number> {
+    const meta = await readMetaFile(skillPath);
+    if (meta.skill_id) {
+        const id = Number(meta.skill_id);
+        if (Number.isFinite(id)) return id;
+    }
+    const infos = await fetchOneskillInfo(skillPath);
+    const chosen = await pickOneskillInfo(infos);
+    return chosen.skillId;
+}
+
+/** 检测已存在的同名 skill (本地 meta + 远程 info) */
+async function detectExistingSkills(skillPath: string): Promise<ExistingSkill[]> {
+    const existing: ExistingSkill[] = [];
+
+    // 1. 检查本地 .skill-meta.json
+    const meta = await readMetaFile(skillPath);
+    if (meta.skill_id) {
+        const id = Number(meta.skill_id);
+        if (Number.isFinite(id)) {
+            existing.push({
+                skillId: id,
+                skillName: (meta.skill_name as string) ?? (meta.name as string) ?? 'unknown',
+                identifier: (meta.skill_identifier as string) ?? '',
+                source: 'local',
+            });
+        }
+    }
+
+    // 2. 检查远程 (排除本地已有的)
+    const remoteInfos = await fetchOneskillInfo(skillPath).catch(() => [] as OnetoolInfo[]);
+    const localId = existing.find(e => e.source === 'local')?.skillId;
+    for (const info of remoteInfos) {
+        if (localId !== info.skillId) {
+            existing.push({
+                skillId: info.skillId,
+                skillName: info.skillName,
+                identifier: info.newSkillIdentifier,
+                source: 'remote',
+            });
+        }
+    }
+
+    return existing;
+}
+
+/** 统一的交互提示: 更新/新建/取消 */
+async function promptForExistingSkill(
+    existing: ExistingSkill[]
+): Promise<{ action: 'update' | 'create' | 'cancel'; skillId?: number }> {
+    logger.warn(`检测到已存在 ${existing.length} 个同名 skill:`);
+    for (const skill of existing) {
+        const tag = skill.source === 'local' ? '[本地]' : '[远程]';
+        console.log(`  ${tag} ${skill.skillName} (#${skill.skillId}) — ${skill.identifier}`);
+    }
+    console.log('');
+
+    const options = existing.map(s => `更新 #${s.skillId} (${s.source === 'local' ? '本地记录' : '远程'})`);
+    options.push('创建新的 skill (不推荐)', '取消');
+
+    const choice = await pickOne('请选择操作:', options);
+
+    if (!choice || choice === '取消') {
+        logger.warn('已取消');
+        return { action: 'cancel' };
+    }
+    if (choice === '创建新的 skill (不推荐)') {
+        logger.warn('将创建新的同名 skill');
+        return { action: 'create' };
+    }
+
+    // 解析选择的 skillId
+    const match = /^更新 #(\d+)/.exec(choice);
+    if (match) {
+        const id = Number(match[1]);
+        logger.info(`已切换到更新模式: skill_id=${id}`);
+        return { action: 'update', skillId: id };
+    }
+
+    // 兜底: 默认取第一个
+    const first = existing[0]!;
+    logger.info(`已切换到更新模式: skill_id=${first.skillId}`);
+    return { action: 'update', skillId: first.skillId };
 }
