@@ -75,7 +75,7 @@ describe('OpenAIProvider.generateSkill — fetch wiring', () => {
         const body = JSON.parse(capturedInit?.body as string);
         expect(body.model).toBeTruthy();
         expect(body.max_tokens).toBe(4096);
-        expect(body.response_format).toEqual({ type: 'json_object' });
+        expect(body.response_format).toBeUndefined();
         expect(body.messages).toHaveLength(2);
         expect(body.messages[0].role).toBe('system');
         expect(body.messages[1].role).toBe('user');
@@ -160,24 +160,15 @@ describe('OpenAIProvider.generateBriefDetail — fetch wiring', () => {
         vi.unstubAllGlobals();
     });
 
-    it('parses briefDesc/detailDoc from response', async () => {
-        fetchMock.mockResolvedValue(
-            jsonResponse({
-                choices: [
-                    {
-                        message: {
-                            content: '{"briefDesc":"一句话简介","detailDoc":"## 功能简介\\n详细"}',
-                        },
-                    },
-                ],
-            })
-        );
+    it('makes two requests (briefDesc + detailDoc) and returns both', async () => {
+        fetchMock
+            .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '一句话简介' } }] }))
+            .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '## 功能简介\n详细' } }] }));
         const p = new OpenAIProvider({ apiKey: 'k', baseUrl: 'https://gw.example.com/v1' });
         const out = await p.generateBriefDetail('# skill', { lang: 'zh' });
         expect(out.briefDesc).toBe('一句话简介');
         expect(out.detailDoc).toContain('功能简介');
-        const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-        expect(body.max_tokens).toBe(2048);
+        expect(fetchMock.mock.calls).toHaveLength(2);
     });
 
     it('throws when fetch rejects', async () => {

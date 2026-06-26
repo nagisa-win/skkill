@@ -3,18 +3,20 @@ import path from 'node:path';
 import matter from 'gray-matter';
 import { loadConfig, getInstallRoot } from '../lib/config.js';
 import { logger } from '../utils/logger.js';
-import { confirm, pickOne } from '../utils/prompt.js';
+import { confirm, pickOne, pickMany } from '../utils/prompt.js';
 import { createLLMProvider } from '../lib/llm/index.js';
 import {
     ensureOneskillAvailable,
     createPublish,
     updatePublish,
     fetchOneskillInfo,
+    fetchOneskillTags,
     readIdentifier,
     writeSkillMeta,
     HINTS,
     type PublishScope,
     type OnetoolInfo,
+    type OnetoolTag,
 } from '../lib/publisher.js';
 import { SkitError } from '../utils/logger.js';
 import type { SkillLang } from '../types/llm.js';
@@ -63,8 +65,9 @@ export async function publishCommand(
     const skillMd = await fs.readFile(path.join(skillPath, 'SKILL.md'), 'utf-8');
     const { data } = matter(skillMd);
     const fmLang = (data as Record<string, unknown>).language as SkillLang | undefined;
+    const fmDescription = ((data as Record<string, unknown>).description as string | undefined)?.trim() ?? '';
 
-    // 描述:CLI flag 缺则 LLM 生成
+    // 描述:CLI flag 缺则 LLM 生成;LLM 失败则降级用 SKILL.md frontmatter 的 description
     const lang: SkillLang = fmLang ?? 'bilingual';
     let briefDesc = opts.briefDesc?.trim();
     let detailDoc = opts.detailDoc?.trim();
@@ -72,13 +75,19 @@ export async function publishCommand(
         const provider = createLLMProvider(config);
         if (!briefDesc || !detailDoc) {
             logger.info('调用 LLM 生成 briefDesc / detailDoc…');
-            const generated = await provider.generateBriefDetail(skillMd, { lang });
-            briefDesc = briefDesc ?? generated.briefDesc;
-            detailDoc = detailDoc ?? generated.detailDoc;
+            try {
+                const generated = await provider.generateBriefDetail(skillMd, { lang });
+                briefDesc = briefDesc ?? generated.briefDesc;
+                detailDoc = detailDoc ?? generated.detailDoc;
+            } catch (err) {
+                logger.warn(`LLM 生成失败,降级使用 SKILL.md description: ${(err as Error).message}`);
+                if (!briefDesc && fmDescription) briefDesc = truncateForBrief(fmDescription);
+                if (!detailDoc && fmDescription) detailDoc = detailDocFromDescription(fmDescription);
+            }
         }
     }
-    if (!briefDesc) throw new SkitError('E_INVALID_SKILL', 'briefDesc 缺失且 LLM 生成失败');
-    if (!detailDoc) throw new SkitError('E_INVALID_SKILL', 'detailDoc 缺失且 LLM 生成失败');
+    if (!briefDesc) throw new SkitError('E_INVALID_SKILL', 'briefDesc 缺失且 LLM 生成失败、SKILL.md 缺少 description');
+    if (!detailDoc) throw new SkitError('E_INVALID_SKILL', 'detailDoc 缺失且 LLM 生成失败、SKILL.md 缺少 description');
 
     // 展示名称:CLI 缺则用 name 字段
     const displayName = (opts.displayName ?? identifier).trim();
@@ -86,12 +95,15 @@ export async function publishCommand(
     // 发布范围
     const publishScope = parseScope(opts.scope);
 
-    // 标签 (create 必填)
+    // 标签 (create 必填,缺则从 oneskill 拉列表交互式选择)
     let tagIds: number[] = [];
     if (!opts.update) {
         tagIds = parseTagIds(opts.tags);
         if (tagIds.length === 0) {
-            throw new SkitError('E_INVALID_INPUT', '创建流程必须通过 --tags 1,2,3 指定至少一个标签');
+            tagIds = await pickTagIds();
+            if (tagIds.length === 0) {
+                throw new SkitError('E_INVALID_INPUT', '未选择任何标签,创建流程取消');
+            }
         }
     }
 
@@ -186,6 +198,38 @@ function parseTagIds(value: string | undefined): number[] {
             }
             return n;
         });
+}
+
+async function pickTagIds(): Promise<number[]> {
+    let tags: OnetoolTag[];
+    try {
+        tags = await fetchOneskillTags();
+    } catch (err) {
+        throw new SkitError(
+            'E_INVALID_INPUT',
+            `未传 --tags,且拉取可用标签失败: ${(err as Error).message}\n可手动 --tags 1,2,3 重试`
+        );
+    }
+    // 默认预选名称含「开发 / 编程 / dev」的常见标签
+    const defaultIds = tags.filter(t => /开发|编程|dev/i.test(t.tagName)).map(t => t.tagId);
+    const labels = tags.map(t => `${t.tagName} (#${t.tagId})`);
+    const idxList = await pickMany('选择场景标签 (空格切换,回车确认,Ctrl+C 取消):', labels, defaultIds.length > 0
+        ? labels.filter((_, i) => defaultIds.includes(tags[i]!.tagId))
+        : [labels[0]!]);
+    if (idxList === null) return [];
+    const labelToId = new Map(labels.map((l, i) => [l, tags[i]!.tagId] as const));
+    return idxList.map(l => labelToId.get(l)!).filter((id): id is number => Number.isFinite(id));
+}
+
+function truncateForBrief(desc: string): string {
+    const firstSentence = /^[^。！？.!?\n]+[。！？.!?]?/.exec(desc)?.[0] ?? desc;
+    const trimmed = firstSentence.trim();
+    return trimmed.length > 100 ? `${trimmed.slice(0, 97)}...` : trimmed;
+}
+
+function detailDocFromDescription(desc: string): string {
+    const body = desc.trim();
+    return `## 功能简介\n\n${body}\n\n## 适用场景\n\n请补充。\n\n## 不适用场景\n\n请补充。\n\n## 依赖要求\n\n| 项目 | 说明 |\n| --- | --- |\n| (无) | 由 LLM 失败降级,后续在平台手动补充 |\n\n## 使用方式\n\n请参考 SKILL.md 完整正文。`;
 }
 
 async function readMetaFile(skillPath: string): Promise<Record<string, unknown>> {

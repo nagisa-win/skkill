@@ -8,10 +8,11 @@ import type {
 import {
     buildCreateSkillSystemPrompt,
     buildCreateSkillUserPrompt,
-    buildBriefDetailSystemPrompt,
-    buildBriefDetailUserPrompt,
+    buildBriefDescSystemPrompt,
+    buildBriefDescUserPrompt,
+    buildDetailDocSystemPrompt,
+    buildDetailDocUserPrompt,
     parseGenerateOutput,
-    parseBriefDetail,
 } from './prompt.js';
 import { SkitError } from '../../utils/logger.js';
 import { DEFAULT_LLM_MODELS } from '../../constants.js';
@@ -48,18 +49,23 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     async generateBriefDetail(skillMd: string, opts: { lang: SkillLang }): Promise<GenerateBriefDetailOutput> {
-        const text = await this.chat({
-            max_tokens: 2048,
-            messages: [
-                { role: 'system', content: buildBriefDetailSystemPrompt(opts) },
-                { role: 'user', content: buildBriefDetailUserPrompt(skillMd) },
-            ],
-        });
-        try {
-            return parseBriefDetail(text);
-        } catch (err) {
-            throw new SkitError('E_LLM_INVALID_OUTPUT', `LLM 输出解析失败: ${(err as Error).message}`);
-        }
+        const [briefDesc, detailDoc] = await Promise.all([
+            this.chat({
+                max_tokens: 256,
+                messages: [
+                    { role: 'system', content: buildBriefDescSystemPrompt(opts) },
+                    { role: 'user', content: buildBriefDescUserPrompt(skillMd) },
+                ],
+            }),
+            this.chat({
+                max_tokens: 2048,
+                messages: [
+                    { role: 'system', content: buildDetailDocSystemPrompt(opts) },
+                    { role: 'user', content: buildDetailDocUserPrompt(skillMd) },
+                ],
+            }),
+        ]);
+        return { briefDesc: briefDesc.trim(), detailDoc: detailDoc.trim() };
     }
 
     private async chat(req: { max_tokens: number; messages: Array<{ role: string; content: string }> }): Promise<string> {
@@ -77,7 +83,7 @@ export class OpenAIProvider implements LLMProvider {
                 body: JSON.stringify({
                     model: this.model,
                     max_tokens: req.max_tokens,
-                    response_format: { type: 'json_object' },
+                    thinking: { type: 'disabled' },
                     messages: req.messages,
                 }),
                 signal: controller.signal,
