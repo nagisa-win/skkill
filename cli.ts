@@ -1,5 +1,7 @@
 import { Command } from 'commander';
-import { SKKILL_VERSION } from './src/constants.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import { installCommand } from './src/commands/install.js';
 import { uninstallCommand } from './src/commands/uninstall.js';
 import { upgradeCommand } from './src/commands/upgrade.js';
@@ -15,12 +17,16 @@ import { doctorCommand } from './src/commands/doctor.js';
 import { validateCommand } from './src/commands/validate.js';
 import { configCommand } from './src/commands/config.js';
 
+const { version } = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8')
+) as { version: string };
+
 const program = new Command();
 
 program
     .name('skkill')
     .description('AI Agent Skill 包管理器 — 像 npm 一样管理 Skill')
-    .version(SKKILL_VERSION)
+    .version(version)
     .option('--config <path>', '配置文件路径', undefined)
     .option('--verbose', '输出详细日志', false);
 

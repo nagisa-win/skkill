@@ -49,6 +49,11 @@ export interface OnetoolInfo {
     detailDoc?: string;
 }
 
+export interface OnetoolTag {
+    tagId: number;
+    tagName: string;
+}
+
 interface ExecResult {
     bin: string;
     args: string[];
@@ -205,6 +210,32 @@ export async function fetchOneskillInfo(skillPath: string): Promise<OnetoolInfo[
         throw new SkitError('E_LLM_INVALID_OUTPUT', `oneskill info 返回不是数组: ${stdout.slice(0, 200)}`);
     }
     return data as OnetoolInfo[];
+}
+
+export async function fetchOneskillTags(): Promise<OnetoolTag[]> {
+    const { stdout } = await runOneskill(['tags']);
+    const data = parseOneskillJson<unknown>(stdout);
+    if (!Array.isArray(data)) {
+        throw new SkitError('E_LLM_INVALID_OUTPUT', `oneskill tags 返回不是数组: ${stdout.slice(0, 200)}`);
+    }
+    const tags: OnetoolTag[] = [];
+    for (const item of data) {
+        if (
+            item &&
+            typeof item === 'object' &&
+            typeof (item as Record<string, unknown>).tagId === 'number' &&
+            typeof (item as Record<string, unknown>).tagName === 'string'
+        ) {
+            tags.push({
+                tagId: (item as Record<string, unknown>).tagId as number,
+                tagName: (item as Record<string, unknown>).tagName as string,
+            });
+        }
+    }
+    if (tags.length === 0) {
+        throw new SkitError('E_INVALID_INPUT', 'oneskill tags 返回空列表,无法选择标签');
+    }
+    return tags;
 }
 
 export async function readIdentifier(skillPath: string): Promise<string> {

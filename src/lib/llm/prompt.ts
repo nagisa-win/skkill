@@ -68,34 +68,137 @@ export function buildCreateSkillUserPrompt(userPrompt: string, opts: GenerateSki
     return `为以下用户需求生成 Skill:\n\n${userPrompt}\n\n要求类型: ${opts.type}。语言: ${opts.lang}。\n\n只返回一个 JSON 对象,字段: skill_md, package_json, (可选) scripts。`;
 }
 
-export function buildBriefDetailSystemPrompt(opts: { lang: SkillLang }): string {
-    return `你是 onetool 平台的发布助手。需要根据 skill 内容生成:
-- "briefDesc": 中文 ≤ 100 字符,一句话概括核心能力
-- "detailDoc": 中文 markdown 详细描述,必须包含以下章节:## 功能简介 (150字左右) / ## 适用场景 (2-5 个,带示例) / ## 不适用场景 (1-3 个) / ## 依赖要求 (表格) / ## 使用方式 (输入格式 / 输出示例)
-
-语言: ${opts.lang === 'en' ? 'English' : '简体中文'}。
-
-只返回 JSON 对象: { "briefDesc": "...", "detailDoc": "..." }。`;
+export function buildBriefDescSystemPrompt(opts: { lang: SkillLang }): string {
+    const langNote = opts.lang === 'en' ? 'English' : '简体中文';
+    return `你是 onetool 平台的发布助手。请根据 skill 内容生成一句话简要描述:
+- ≤ 100 字符
+- 概括核心能力和使用场景
+- 语言: ${langNote}
+- 只输出描述文字本身,不要任何其他内容、标签或格式`;
 }
 
-export function buildBriefDetailUserPrompt(skillMd: string): string {
-    return `以下是 skill 的 SKILL.md 内容:\n\n${skillMd}\n\n请生成 briefDesc 和 detailDoc。`;
+export function buildBriefDescUserPrompt(skillMd: string): string {
+    return `请为以下 SKILL.md 生成简要描述:\n\n${skillMd}`;
+}
+
+export function buildDetailDocSystemPrompt(opts: { lang: SkillLang }): string {
+    const langNote = opts.lang === 'en' ? 'English' : '简体中文';
+    return `你是 onetool 平台的发布助手。请根据 skill 内容生成详细说明文档,必须包含以下 Markdown 章节:
+## 功能简介 (150字左右)
+## 适用场景 (2-5 个,带示例)
+## 不适用场景 (1-3 个)
+## 依赖要求 (表格)
+## 使用方式 (输入格式 / 输出示例)
+
+语言: ${langNote}。只输出 Markdown 正文,不要任何代码块包裹或其他格式。`;
+}
+
+export function buildDetailDocUserPrompt(skillMd: string): string {
+    return `请为以下 SKILL.md 生成详细说明文档:\n\n${skillMd}`;
 }
 
 export function extractJsonObject<T = unknown>(text: string): T {
-    const trimmed = text.trim();
-    try {
-        return JSON.parse(trimmed) as T;
-    } catch {
-        const fence = /```(?:json)?\s*([\s\S]+?)\s*```/.exec(trimmed);
-        if (fence && fence[1]) return JSON.parse(fence[1]) as T;
-        const first = trimmed.indexOf('{');
-        const last = trimmed.lastIndexOf('}');
-        if (first !== -1 && last !== -1 && last > first) {
-            return JSON.parse(trimmed.slice(first, last + 1)) as T;
+    const trimmed = stripThinkingBlocks(text).trim();
+
+    const fenceStart = trimmed.indexOf('```json');
+    if (fenceStart !== -1) {
+        const last = trimmed.lastIndexOf('```');
+        if (last > fenceStart) {
+            const inside = trimmed.slice(fenceStart + 7, last).trim();
+            const result = tryParseOrRepair(inside);
+            if (result !== null) return result as T;
         }
-        throw new Error('No valid JSON object found in LLM output');
     }
+    const plainFenceStart = trimmed.indexOf('```');
+    if (plainFenceStart !== -1 && plainFenceStart !== fenceStart) {
+        const last = trimmed.lastIndexOf('```');
+        if (last > plainFenceStart) {
+            const inside = trimmed.slice(plainFenceStart + 3, last).trim();
+            const result = tryParseOrRepair(inside);
+            if (result !== null) return result as T;
+        }
+    }
+    const direct = tryParseOrRepair(trimmed);
+    if (direct !== null) return direct as T;
+
+    const candidates = collectTopLevelObjects(trimmed);
+    for (let i = candidates.length - 1; i >= 0; i--) {
+        const r = tryParseOrRepair(candidates[i]!);
+        if (r !== null) return r as T;
+    }
+    const first = trimmed.indexOf('{');
+    const last = trimmed.lastIndexOf('}');
+    if (first !== -1 && last !== -1 && last > first) {
+        const r = tryParseOrRepair(trimmed.slice(first, last + 1));
+        if (r !== null) return r as T;
+    }
+    throw new Error('No valid JSON object found in LLM output');
+}
+
+function tryParseOrRepair(src: string): unknown {
+    try {
+        return JSON.parse(src);
+    } catch {
+        const repaired = repairBareQuotesInValues(src);
+        if (repaired !== src) {
+            try { return JSON.parse(repaired); } catch { /* fallthrough */ }
+        }
+        return null;
+    }
+}
+
+function repairBareQuotesInValues(src: string): string {
+    let result = '';
+    let inString = false;
+    let isEscape = false;
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i]!;
+        if (isEscape) { isEscape = false; result += ch; continue; }
+        if (ch === '\\') { isEscape = true; result += ch; continue; }
+        if (ch === '"') {
+            if (!inString) { inString = true; result += ch; }
+            else {
+                let j = i + 1;
+                while (j < src.length && (src[j] === ' ' || src[j] === '\t')) j++;
+                const next = src[j];
+                if (!next || ':,}]\n\r'.includes(next)) { inString = false; result += ch; }
+                else { result += '\\"'; }
+            }
+        } else { result += ch; }
+    }
+    return result;
+}
+
+function stripThinkingBlocks(text: string): string {
+    return text
+        .replace(/<(?:think|thinking|antml:thinking)>[\s\S]*?<\/(?:think|thinking|antml:thinking)>/gi, '')
+        .replace(/<(?:think|thinking|antml:thinking)>[\s\S]*?(?=```|\n\s*\{[\r\n])/gi, '')
+        .replace(/<(?:think|thinking|antml:thinking)>/gi, '');
+}
+
+function collectTopLevelObjects(text: string): string[] {
+    const out: string[] = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (escape) { escape = false; continue; }
+        if (inString) {
+            if (ch === '\\') escape = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') { inString = true; }
+        else if (ch === '{') { if (depth === 0) start = i; depth++; }
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0 && start !== -1) { out.push(text.slice(start, i + 1)); start = -1; }
+            else if (depth < 0) { depth = 0; }
+        }
+    }
+    return out;
 }
 
 export function parseGenerateOutput(text: string): import('../../types/llm.js').GenerateSkillOutput {
@@ -114,6 +217,30 @@ export function parseGenerateOutput(text: string): import('../../types/llm.js').
     };
 }
 
+// 仅保留作为兜底兼容,openai.ts / anthropic.ts 已不再调用
 export function parseBriefDetail(text: string): GenerateBriefDetailOutput {
-    return extractJsonObject<GenerateBriefDetailOutput>(text);
+    const detailDoc = text.trim();
+    if (!detailDoc) throw new Error('LLM 输出为空');
+    const heading = /^#{1,3}\s+(.+)$/m.exec(detailDoc);
+    const head = (heading?.[1] ?? detailDoc.split(/\n\s*\n/)[0] ?? '').replace(/[*_`#]/g, '').trim().replace(/\s+/g, ' ');
+    const briefDesc = head.length > 100 ? `${head.slice(0, 97)}...` : head;
+    return { briefDesc, detailDoc };
+}
+
+function sanitizeProse(text: string): string {
+    return text
+        .replace(/<(?:think|thinking|antml:thinking)>[\s\S]*?<\/(?:think|thinking|antml:thinking)>/gi, '')
+        .replace(/```(?:markdown|md)?\s*$/i, '')
+        .trim();
+}
+
+function stripMarkdownFence(text: string): string {
+    return text.replace(/^```(?:markdown|md)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+}
+
+function deriveBrief(md: string): string {
+    const heading = /^#{1,3}\s+(.+)$/m.exec(md);
+    const head = (heading?.[1] ?? md.split(/\n\s*\n/)[0] ?? '').replace(/[*_`#]/g, '').trim();
+    const oneLine = head.replace(/\s+/g, ' ');
+    return oneLine.length > 100 ? `${oneLine.slice(0, 97)}...` : oneLine;
 }
