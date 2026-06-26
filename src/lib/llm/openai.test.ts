@@ -2,12 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenAIProvider } from './openai.js';
 import { SkitError } from '../../utils/logger.js';
 
-const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_KEY = process.env.OPENAI_API_KEY;
-
-function mockFetch(impl: (url: string | URL | Request, init?: RequestInit) => Promise<Response>) {
-    vi.stubGlobal('fetch', vi.fn((url, init) => impl(url as string, init)));
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
     return new Response(JSON.stringify(body), {

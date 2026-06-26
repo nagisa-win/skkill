@@ -226,21 +226,3 @@ export function parseBriefDetail(text: string): GenerateBriefDetailOutput {
     const briefDesc = head.length > 100 ? `${head.slice(0, 97)}...` : head;
     return { briefDesc, detailDoc };
 }
-
-function sanitizeProse(text: string): string {
-    return text
-        .replace(/<(?:think|thinking|antml:thinking)>[\s\S]*?<\/(?:think|thinking|antml:thinking)>/gi, '')
-        .replace(/```(?:markdown|md)?\s*$/i, '')
-        .trim();
-}
-
-function stripMarkdownFence(text: string): string {
-    return text.replace(/^```(?:markdown|md)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-}
-
-function deriveBrief(md: string): string {
-    const heading = /^#{1,3}\s+(.+)$/m.exec(md);
-    const head = (heading?.[1] ?? md.split(/\n\s*\n/)[0] ?? '').replace(/[*_`#]/g, '').trim();
-    const oneLine = head.replace(/\s+/g, ' ');
-    return oneLine.length > 100 ? `${oneLine.slice(0, 97)}...` : oneLine;
-}
