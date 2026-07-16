@@ -6,6 +6,10 @@ import { logger, SkitError } from '../utils/logger.js';
 import type { SkillPackageJson } from '../types/skill.js';
 
 const PKG_JSON = 'package.json';
+const META_JSON = '.skill-meta.json';
+
+// 简单 semver 校验: 允许 x.y.z (含预发布), 兜底接受纯数字/带 v 前缀
+const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].+)?$/;
 
 // 读取 package.json;不存在返回 null
 export async function readPackageJson(skillPath: string): Promise<SkillPackageJson | null> {
@@ -67,4 +71,38 @@ export async function ensureManifest(
     await writePackageJson(skillPath, generated);
     logger.warn(`Auto-generated package.json for "${generated.name}"; consider upstreaming.`);
     return { pkg: generated, generated: true };
+}
+
+/**
+ * 读 .skill-meta.json 的 version (onetool 平台下发,是 skill 的真实版本),
+ * 回写到 package.json.version, 让两者对齐.
+ *
+ * 设计原则: 这是一个"尽力同步"操作, 任何异常 (meta 缺失 / version 字段缺失 /
+ * version 非法 / package.json 读写失败) 都静默跳过, 绝不阻断 install / upgrade.
+ *
+ * @returns 同步后的版本号; 未同步返回 null
+ */
+export async function syncVersionFromMeta(skillPath: string): Promise<string | null> {
+    const metaRaw = await fs.readFile(path.join(skillPath, META_JSON), 'utf-8').catch(() => null);
+    if (!metaRaw) return null;
+
+    let meta: Record<string, unknown>;
+    try {
+        meta = JSON.parse(metaRaw) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+
+    // onetool 平台字段为 version; 防御性兼容 skill_version
+    const rawVersion = meta.version ?? meta.skill_version;
+    if (typeof rawVersion !== 'string') return null;
+    const version = rawVersion.trim().replace(/^v/, '');
+    if (!SEMVER_RE.test(version)) return null;
+
+    const pkg = await readPackageJson(skillPath);
+    if (!pkg || pkg.version === version) return pkg?.version ?? null;
+
+    pkg.version = version;
+    await writePackageJson(skillPath, pkg);
+    return version;
 }

@@ -13,6 +13,7 @@ import {
     fetchOneskillTags,
     readIdentifier,
     writeSkillMeta,
+    linkIcodeRemote,
     HINTS,
     type PublishScope,
     type OnetoolInfo,
@@ -176,6 +177,18 @@ export async function publishCommand(
     // 回写 .skill-meta.json
     await writeSkillMeta(skillPath, result);
     logger.success(`已回写 ${path.join(skillPath, '.skill-meta.json')}`);
+
+    // 关联git远程 (增强步骤, 失败不阻断发布)
+    try {
+        const { url: remoteUrl, action } = await linkIcodeRemote(skillPath, name);
+        const label = action === 'added' ? '已关联' : action === 'updated' ? '已更新' : '已存在';
+        logger.success(`远程 ${label}: ${remoteUrl}`);
+    } catch (err) {
+        logger.warn(`关联远程失败(不影响发布): ${(err as Error).message}`);
+        logger.warn(
+            `可在 config.yaml 配 publisher.skillRepoUrl (占位 {user} / {skillName}), 或 env SKKILL_PUBLISHER_SKILL_REPO_URL; 留空则不做 git 关联`
+        );
+    }
 
     // 平台链接
     if (result.url) console.log(`  链接:        ${result.url}`);

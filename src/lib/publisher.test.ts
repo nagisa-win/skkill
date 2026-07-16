@@ -5,14 +5,21 @@ vi.mock('execa', () => ({
     execa: vi.fn(),
 }));
 vi.mock('./config-resolver.js', () => ({
-    getConfigValue: vi.fn(() => undefined),
-}));
-vi.mock('./config.js', () => ({
+    getConfigValue: vi.fn(),
+}));vi.mock('./config.js', () => ({
     loadConfigSilent: vi.fn(async () => ({})),
+}));
+// mock ./git.js, 避免 linkIcode触发真实 simple-git 调用
+vi.mock('./git.js', () => ({
+    getUserName: vi.fn(),
+    ensureOrigin: vi.fn(),
+    init: vi.fn(),
 }));
 
 import { execa } from 'execa';
-import { fetchOneskillTags } from './publisher.js';
+import { fetchOneskillTags, linkIcodeRemote } from './publisher.js';
+import { getUserName, ensureOrigin, init as gitInit } from './git.js';
+import { getConfigValue } from './config-resolver.js';
 import { SkitError } from '../utils/logger.js';
 
 const mockedExeca = vi.mocked(execa);
@@ -83,5 +90,52 @@ describe('fetchOneskillTags', () => {
     it('throws on invalid JSON', async () => {
         mockOneskill('not json at all');
         await expect(fetchOneskillTags()).rejects.toThrow(SkitError);
+    });
+});
+
+describe('linkIcodeRemote', () => {
+    const mockedGetUserName = vi.mocked(getUserName);
+    const mockedEnsureOrigin = vi.mocked(ensureOrigin);
+    const mockedGitInit = vi.mocked(gitInit);
+    const mockedGetConfigValue = vi.mocked(getConfigValue);
+
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('从 config 读 skillRepoUrl 模板, 替换 {user}/{skillName} 后调 init + ensureOrigin', async () => {
+        mockedGetConfigValue.mockReturnValueOnce('ssh://{user}@example.com:8235/repo/{skillName}');
+        mockedGetUserName.mockResolvedValue('zhangsan');
+        mockedGitInit.mockResolvedValue(undefined);
+        mockedEnsureOrigin.mockResolvedValue('added');
+
+        const res = await linkIcodeRemote('/skills/foo', 'foo');
+
+        expect(res.url).toBe('ssh://zhangsan@example.com:8235/repo/foo');
+        expect(res.action).toBe('added');
+        expect(mockedGitInit).toHaveBeenCalledWith('/skills/foo');
+        expect(mockedEnsureOrigin).toHaveBeenCalledWith('/skills/foo', res.url);
+    });
+
+    it('模板里 skillName 占位出现多次时也全部替换', async () => {
+        mockedGetConfigValue.mockReturnValueOnce('https://g.example.com/{skillName}/mirror/{skillName}.git');
+        mockedGetUserName.mockResolvedValue('u');
+        mockedGitInit.mockResolvedValue(undefined);
+        mockedEnsureOrigin.mockResolvedValue('updated');
+
+        const res = await linkIcodeRemote('/s/bar', 'bar');
+        expect(res.url).toBe('https://g.example.com/bar/mirror/bar.git');
+        expect(res.action).toBe('updated');
+    });
+
+    it('未配置 skillRepoUrl 时 throw 出清晰指引', async () => {
+        mockedGetConfigValue.mockReturnValueOnce(undefined);
+        await expect(linkIcodeRemote('/s/x', 'x')).rejects.toThrow(/publisher\.skillRepoUrl/);
+    });
+
+    it('getUserName 抛错时透传 (命令层负责降级)', async () => {
+        mockedGetConfigValue.mockReturnValueOnce('ssh://{user}@x/x/{skillName}');
+        mockedGetUserName.mockRejectedValue(new SkitError('E_INVALID_INPUT', 'user.name 为空'));
+        await expect(linkIcodeRemote('/skills/x', 'x')).rejects.toThrow(/user\.name 为空/);
     });
 });

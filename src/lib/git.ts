@@ -51,3 +51,42 @@ export async function isRepo(cwd: string): Promise<boolean> {
     const g = simpleGit({ baseDir: cwd });
     return g.checkIsRepo();
 }
+
+/** 读取 git config user.name; 为空时抛错 (提示先配置本机 git 身份) */
+export async function getUserName(): Promise<string> {
+    const g = simpleGit();
+    const raw = (await g.raw(['config', 'user.name'])).trim();
+    if (!raw) {
+        throw new SkitError(
+            'E_INVALID_INPUT',
+            'git config user.name 为空, 无法拼远程地址; 请先执行 git config --global user.name <你的icode用户名>'
+        );
+    }
+    return raw;
+}
+
+/**
+ * 确保 origin remote 指向目标 url:
+ * - 不存在 → addRemote, 返回 'added'
+ * - 已存在且 url 不同 → setUrl 更新, 返回 'updated'
+ * - 已存在且 url 相同 → 返回 'unchanged'
+ * 对应「保留已有 .git, 仅 add/更新 origin」的语义
+ */
+export async function ensureOrigin(
+    cwd: string,
+    url: string
+): Promise<'added' | 'updated' | 'unchanged'> {
+    const g = simpleGit({ baseDir: cwd });
+    const remotes = await g.getRemotes(true);
+    const origin = remotes.find(r => r.name === 'origin');
+    const current = origin?.refs?.fetch ?? origin?.refs?.push;
+    if (!origin) {
+        await g.addRemote('origin', url);
+        return 'added';
+    }
+    if (current !== url) {
+        await g.remote(['set-url', 'origin', url]);
+        return 'updated';
+    }
+    return 'unchanged';
+}

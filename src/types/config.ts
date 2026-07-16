@@ -41,6 +41,10 @@ export interface PublisherConfig {
     bin?: string;
     // 平台要求最低版本,默认 1.0.1
     minVersion?: string;
+    // 发布成功后, 本地 skill 目录要关联的 git 远程地址模板 (内网配置, 不入库)
+    // 支持占位: {user} = git config user.name, {skillName} = skill 目录名
+    // 也可通过 env SKKILL_PUBLISHER_SKILL_REPO_URL 覆盖
+    skillRepoUrl?: string;
 }
 
 export interface ConfigFile {
