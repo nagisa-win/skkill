@@ -7,7 +7,7 @@ import { safeRemove, copyDir } from '../utils/fs.js';
 import { assertPathSafe, sanitizeName } from '../utils/sanitize.js';
 import { parseSource } from './source-parser.js';
 import { readSkillMd } from './manifest.js';
-import { ensureManifest } from './package-json.js';
+import { ensureManifest, syncVersionFromMeta } from './package-json.js';
 import { getBackend, pickDefaultBackend } from '../backends/index.js';
 import { upsertSkill, getSkill } from './skill-lock.js';
 import { checkUpdate, fetchSkillFolderHash, requireLockEntry } from './skill-upgrade.js';
@@ -133,6 +133,9 @@ export async function installSkill(
             const existingPkgRaw = await fs.readFile(path.join(destPath, 'package.json'), 'utf-8').catch(() => null);
             const existingPkg = existingPkgRaw ? (JSON.parse(existingPkgRaw) as SkillPackageJson) : pkg;
             const { frontmatter: existingFm } = await readSkillMd(destPath);
+            // onetool 源: 已装时也顺手对齐版本, 修复历史安装 package.json 残留 0.1.0 占位的情况
+            const synced = await syncVersionFromMeta(destPath);
+            if (synced && existingPkg.version !== synced) existingPkg.version = synced;
             // 写 lock,保留旧 entry 的 installedAt (复用旧 install 时间,语义上不算重装)
             await upsertLockPreservingInstalledAt(ref, source, backend.id, destName, opts.lockPath);
             return {
@@ -149,6 +152,9 @@ export async function installSkill(
         const metaStat = await fs.stat(metaSrc).catch(() => null);
         if (metaStat?.isFile()) {
             await fs.copyFile(metaSrc, path.join(destPath, '.skill-meta.json'));
+            // onetool 源: 用平台下发的真实版本覆盖 package.json 的占位版本 (0.1.0), 保持对齐
+            const synced = await syncVersionFromMeta(destPath);
+            if (synced && pkg.version !== synced) pkg.version = synced;
         }
         // 新装: 写 lock,installedAt 用当前时间
         // 若是 GitHub 源,顺手算 skillFolderHash 作为 upgrade baseline (失败不阻断安装)

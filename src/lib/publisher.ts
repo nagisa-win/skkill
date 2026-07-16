@@ -6,6 +6,7 @@ import { SkitError } from '../utils/logger.js';
 import { ConfigKey, ONETOOL_BOS_HOST, ONESKILL_MIN_VERSION as MIN_VERSION } from '../constants.js';
 import { getConfigValue } from './config-resolver.js';
 import { loadConfigSilent } from './config.js';
+import { getUserName, ensureOrigin, init as gitInit } from './git.js';
 
 const HINT_INSTALL_MAC_LINUX = `curl -fsSL ${ONETOOL_BOS_HOST}/oneskill-cli/install.sh | bash`;
 const HINT_INSTALL_WINDOWS = `irm ${ONETOOL_BOS_HOST}/oneskill-cli/install.ps1 | iex`;
@@ -272,6 +273,30 @@ export async function writeSkillMeta(skillPath: string, result: PublishResult): 
         published_at: new Date().toISOString(),
     };
     await fs.writeFile(metaPath, JSON.stringify(merged, null, 2) + '\n', 'utf-8');
+}
+
+/**
+ * 发布成功后, 把本地 skill 目录与远程代码库做 git 关联 (init + origin).
+ * 远程地址模板从 config.publisher.skillRepoUrl 读取, 占位 {user} / {skillName} 运行时替换.
+ * 未配置时 throw 出清晰指引, 命令层会降级 warn 不阻断发布.
+ */
+export async function linkIcodeRemote(
+    skillPath: string,
+    skillName: string
+): Promise<{ url: string; action: 'added' | 'updated' | 'unchanged' }> {
+    const config = await loadConfigSilent();
+    const template = getConfigValue(ConfigKey.PublisherSkillRepoUrl, config);
+    if (!template) {
+        throw new SkitError(
+            'E_INVALID_INPUT',
+            '未配置 publisher.skillRepoUrl, 无法关联远程; 请在 config.yaml 里填, 或用 env SKKILL_PUBLISHER_SKILL_REPO_URL 覆盖 (留空 = 不做 git 关联)'
+        );
+    }
+    const user = await getUserName();
+    const url = template.replace(/\{user\}/g, user).replace(/\{skillName\}/g, skillName);
+    await gitInit(skillPath); // 已是 repo 则 no-op
+    const action = await ensureOrigin(skillPath, url);
+    return { url, action };
 }
 
 export const HINTS = {

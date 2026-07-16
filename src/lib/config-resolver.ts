@@ -48,6 +48,8 @@ function lookupInConfig(config: ConfigFile, key: ConfigKeyName): Primitive {
             return config.publisher?.bin;
         case ConfigKey.PublisherMinVersion:
             return config.publisher?.minVersion;
+        case ConfigKey.PublisherSkillRepoUrl:
+            return config.publisher?.skillRepoUrl;
     }
 }
 

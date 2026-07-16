@@ -6,7 +6,7 @@ import { SkitError, logger } from '../utils/logger.js';
 import { ONETOOL_BOS_HOST, ConfigKey } from '../constants.js';
 import { getConfigValue } from '../lib/config-resolver.js';
 import { loadConfigSilent } from '../lib/config.js';
-import { readPackageJson } from '../lib/package-json.js';
+import { readPackageJson, syncVersionFromMeta } from '../lib/package-json.js';
 import type { ResolvedSource, FetchResult, SearchResult } from '../types/backend.js';
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
@@ -225,7 +225,9 @@ export class OnetoolBackend extends BaseBackend {
             const stat = await fs2.stat(skillPath).catch(() => null);
             if (stat?.isDirectory()) await fs2.rm(skillPath, { recursive: true, force: true });
             await fs2.cp(fetched.skillPath, skillPath, { recursive: true });
-            return { from: before, to: after };
+            // onetool 源: 用 .skill-meta.json 的真实版本覆盖 package.json, 避免 to 仍是旧占位版本
+            const synced = await syncVersionFromMeta(skillPath);
+            return { from: before, to: synced ?? after };
         } finally {
             await fs2.rm(tmpDir, { recursive: true, force: true });
         }

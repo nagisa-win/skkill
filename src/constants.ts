@@ -67,6 +67,8 @@ export const ConfigKey = {
     // publisher
     PublisherBin: 'publisher.bin',
     PublisherMinVersion: 'publisher.minVersion',
+    // 发布成功后 git 关联的远程地址模板 (内网值, 不在源码硬编码)
+    PublisherSkillRepoUrl: 'publisher.skillRepoUrl',
     // paths
     InstallRoot: 'installRoot',
 } as const;

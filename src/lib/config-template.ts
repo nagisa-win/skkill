@@ -69,6 +69,12 @@ publisher:
   # 平台要求最低版本
   # minVersion: "1.0.1"
 
+  # 发布成功后, 自动 git init + remote add origin 关联的远程地址模板 (内网)
+  # 占位: {user} = git config user.name, {skillName} = skill 目录名
+  # 留空 = 不做 git 关联 (publish 仍会成功, 只是不会动 git)
+  # 也可通过 env SKKILL_PUBLISHER_SKILL_REPO_URL 覆盖
+  # skillRepoUrl: ssh://{user}@example.com:8235/org/repo/{skillName}
+
 # ---- Agent adapter (可选) ----
 # agents:
 #   claudecode:
