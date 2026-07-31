@@ -12,7 +12,7 @@
 - **架构核心**:
     - `src/backends/` — onetool / github / git (实现 `SkillBackend`)
     - `src/lib/` — installer / publisher / searcher / skill-rules / config
-    - `src/agents/` — claude-code / codex / opencode / cursor / aider adapter
+    - `src/agents/` — claude-code / codex / comate / opencode / cursor / aider adapter
 - **发布**: 合 main 后 CI 自动读 `package.json` version 打 tag + `npm publish` (NPM_TOKEN env)
 
 ## 关键约束

@@ -44,3 +44,17 @@ export class SkitError extends Error {
         this.code = code;
     }
 }
+
+// 友好展示错误: SkitError 带 code, 普通 Error 只显示 message; 仅 --verbose 时附完整 stack
+export function reportError(err: unknown, verbose = false): void {
+    if (err instanceof SkitError) {
+        logger.error(`${err.message}  [${err.code}]`);
+    } else if (err instanceof Error) {
+        logger.error(err.message);
+    } else {
+        logger.error(String(err));
+    }
+    if (verbose && err instanceof Error && err.stack) {
+        console.error(chalk.dim(err.stack));
+    }
+}

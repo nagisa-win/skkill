@@ -20,6 +20,10 @@ export async function uninstallCommand(
         .filter((a): a is NonNullable<typeof a> => a !== undefined);
 
     const results = await unapplyFromAgents(name, adapters);
+    // 逐条打印失败原因,与 link/unlink 保持一致
+    for (const r of results) {
+        if (r.error) logger.warn(`Broken: ${name} -> ${r.agentId}: ${r.error}`);
+    }
     const removedCount = results.filter(r => r.removed).length;
     logger.info(`Removed ${removedCount} symlink(s) from agents`);
 

@@ -81,6 +81,8 @@ publisher:
 #     skillsDirOverride: ~/my-claude-skills
 #   codex:
 #     enabled: true
+#   comate:
+#     skillsDirOverride: ~/.comate/skills
 `;
 
 export function buildConfigTemplate(): string {

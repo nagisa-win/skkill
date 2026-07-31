@@ -44,7 +44,7 @@ src/
 │   ├── installer.ts  通用安装流
 │   ├── publisher.ts  oneskill 联动
 │   └── searcher.ts   链式搜索
-├── agents/           Agent adapter (claude-code / codex / opencode)
+├── agents/           Agent adapter (claude-code / codex / comate / …)
 ├── types/            公共类型
 ├── utils/            工具函数
 └── constants.ts
@@ -88,9 +88,11 @@ src/
 
 ## 新增 Agent Adapter
 
-1. `src/agents/<id>.ts` 实现 `AgentAdapter` 接口
-2. 在 `src/agents/index.ts` `registerAgent()` 注册
-3. 至少提供 `id / displayName / detect() / applyTo(skill)`
+1. `src/types/agent.ts` 把新 `<id>` 加入 `AgentId` 联合类型
+2. `src/constants.ts` 在 `DEFAULT_SKILLS_DIRS` / `AGENT_HOME_ENV` 各补一条 (二者都是 `Record<AgentId>`,缺 key 会编译报错)
+3. `src/agents/<id>.ts` 继承 `BaseAdapter`,声明 `id / displayName / homeEnvVar`
+4. `src/agents/index.ts` 实例化并注册到 `implemented` map
+5. (可选) `src/lib/config-template.ts` 补 `skillsDirOverride` 注释示例
 
 ## Coding Style
 

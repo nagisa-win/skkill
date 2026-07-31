@@ -1,6 +1,6 @@
 # skkill
 
-> AI Agent Skill 包管理器 — 像 npm 一样管理 Skill,在 Claude Code / Codex / OpenCode 等多 Agent 间一键共享
+> AI Agent Skill 包管理器 — 像 npm 一样管理 Skill,在 Claude Code / Codex / Comate 等多 Agent 间一键共享
 
 [![npm version](https://img.shields.io/npm/v/@steven-y/skkill)](https://www.npmjs.com/package/@steven-y/skkill)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-339933)](https://nodejs.org)
@@ -9,7 +9,7 @@
 
 ## 概述
 
-**skkill** 是一个面向 AI Agent Skill 的跨平台包管理器。它把分散在多个 Agent (Claude Code / Codex / OpenCode / Cursor / Aider 等) 的 Skill 统一安装到 `~/.skkill/skills/`,再通过软链接一键分发到目标 Agent,做到一处升级、处处生效。
+**skkill** 是一个面向 AI Agent Skill 的跨平台包管理器。它把分散在多个 Agent (Claude Code / Codex / Comate / OpenCode / Cursor / Aider 等) 的 Skill 统一安装到 `~/.skkill/skills/`,再通过软链接一键分发到目标 Agent,做到一处升级、处处生效。
 
 后端默认走 [onetool](https://bj.bcebos.com/onetool/skills-json) (百度内网 Skill 平台) 走 BOS zip 下载,自动兜底 GitHub `skill` 关键字搜索。
 
@@ -89,24 +89,24 @@ skkill search llm --backend github           # 只看 GitHub 来源
 ### 安装 + 应用到 Agent
 
 ```bash
-skkill install skill-recommender -a claude-code codex   # 从 onetool 装
-skkill install owner/repo -a claude-code                # 从 GitHub 装
-skkill install https://github.com/owner/repo -a claude-code   # 任意 git URL
+skkill install skill-recommender -a claudecode codex   # 从 onetool 装
+skkill install owner/repo -a claudecode                # 从 GitHub 装
+skkill install https://github.com/owner/repo -a claudecode   # 任意 git URL
 ```
 
-安装路径:`~/.skkill/skills/<name>/`。再用 `apply` 软链接到 Agent:
+安装路径:`~/.skkill/skills/<name>/`。再用 `link` 软链接到 Agent:
 
 ```bash
-skkill apply claude-code    # 也支持 `skkill apply all`
+skkill link claudecode    # 目标: claudecode | codex | comate,也支持 `skkill link all`
 ```
 
 ### 从其他 Agent 迁移 Skill
 
-如果你在 Claude Code / Codex / OpenCode 等其他 Agent 的 `skills/` 目录下已经有现成的 skill 想纳入 skkill 管理:
+如果你在 Claude Code / Codex / Comate 等其他 Agent 的 `skills/` 目录下已经有现成的 skill 想纳入 skkill 管理:
 
 ```bash
-skkill import ~/.claude/skills/dodo-refactor-fe/    # 从 claude-code 接管
-skkill import ~/.codex/skills/my-skill --name my-skill -a claude-code   # 重命名 + 直接链接
+skkill import ~/.claude/skills/dodo-refactor-fe/    # 从 claudecode 接管
+skkill import ~/.codex/skills/my-skill --name my-skill -a claudecode   # 重命名 + 直接链接
 ```
 
 行为:
