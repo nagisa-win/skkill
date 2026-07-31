@@ -16,6 +16,7 @@ import { listCommand } from './src/commands/list.js';
 import { doctorCommand } from './src/commands/doctor.js';
 import { validateCommand } from './src/commands/validate.js';
 import { configCommand } from './src/commands/config.js';
+import { reportError } from './src/utils/logger.js';
 
 const { version } = JSON.parse(
     readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8')
@@ -174,4 +175,10 @@ program
         });
     });
 
-await program.parseAsync(process.argv);
+try {
+    await program.parseAsync(process.argv);
+} catch (err) {
+    // 统一出口: 友好展示命令抛出的错误, --verbose 才附 stack
+    reportError(err, program.opts().verbose === true);
+    process.exitCode = 1;
+}

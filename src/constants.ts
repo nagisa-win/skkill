@@ -12,6 +12,7 @@ export const DEFAULT_BRANCH = 'main';
 export const DEFAULT_SKILLS_DIRS = {
     claudecode: path.join(os.homedir(), '.claude', 'skills'),
     codex: path.join(os.homedir(), '.codex', 'skills'),
+    comate: path.join(os.homedir(), '.comate', 'skills'),
     opencode: path.join(os.homedir(), '.config', 'opencode', 'skills'),
     openclaw: path.join(os.homedir(), '.openclaw', 'skills'),
     cursor: path.join(os.homedir(), '.cursor', 'skills'),
@@ -22,6 +23,7 @@ export const DEFAULT_SKILLS_DIRS = {
 export const AGENT_HOME_ENV = {
     claudecode: 'CLAUDE_CONFIG_DIR',
     codex: 'CODEX_HOME',
+    comate: 'COMATE_HOME',
     opencode: 'XDG_CONFIG_HOME',
     openclaw: 'OPENCLAW_HOME',
     cursor: 'CURSOR_HOME',

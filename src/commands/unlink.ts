@@ -46,6 +46,10 @@ export async function unlinkCommand(target: string): Promise<void> {
         if (!stat?.isDirectory()) continue;
 
         const results = await unapplyFromAgents(name, adapters);
+        // 逐条打印失败原因,与 link 保持一致,否则 broken 计数无从排查
+        for (const r of results) {
+            if (r.error) logger.warn(`Broken: ${name} -> ${r.agentId}: ${r.error}`);
+        }
         removed += results.filter(r => r.removed).length;
         notLinked += results.filter(r => !r.removed && !r.error).length;
         broken += results.filter(r => r.error).length;
