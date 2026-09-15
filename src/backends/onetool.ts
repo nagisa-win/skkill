@@ -3,58 +3,21 @@ import fs from 'node:fs/promises';
 import unzipper from 'unzipper';
 import { BaseBackend } from './base.js';
 import { SkitError, logger } from '../utils/logger.js';
-import { ONETOOL_BOS_HOST, ConfigKey } from '../constants.js';
+import { ConfigKey } from '../constants.js';
 import { getConfigValue } from '../lib/config-resolver.js';
 import { loadConfigSilent } from '../lib/config.js';
 import { readPackageJson, syncVersionFromMeta } from '../lib/package-json.js';
 import type { ResolvedSource, FetchResult, SearchResult } from '../types/backend.js';
-
-const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-const SEARCH_TIMEOUT_MS = 8000;
-
-// 字段名在不同版本可能命名不同,优先 bosUrl, 兜底多种
-function pickBosUrl(row: Record<string, unknown>): string | undefined {
-    const candidates = ['bosUrl', 'bos_url', 'downloadUrl', 'download_url', 'url'];
-    for (const k of candidates) {
-        const v = row[k];
-        if (typeof v === 'string' && v.length > 0) return v;
-    }
-    return undefined;
-}
-
-interface OnetoolMetaRow {
-    name?: string;
-    fullName?: string;
-    full_name?: string;
-    skillName?: string;
-    skill_name?: string;
-    description?: string;
-    version?: string;
-    tags?: string[];
-    skillId?: string | number;
-    skill_id?: string | number;
-    id?: string | number;
-    namespace?: string;
-    url?: string;
-    updatedAt?: string;
-    updated_at?: string;
-}
-
-function rowToSearchResult(row: OnetoolMetaRow): SearchResult | null {
-    const name = row.skillName ?? row.skill_name ?? row.fullName ?? row.full_name ?? row.name;
-    if (!name) return null;
-    return {
-        name: String(name),
-        description: String(row.description ?? ''),
-        url: String(row.url ?? `${ONETOOL_BOS_HOST}/${name}`),
-        version: row.version ? String(row.version) : undefined,
-        tags: Array.isArray(row.tags) ? row.tags.map(String) : undefined,
-        skillId: row.skillId ?? row.skill_id ?? row.id,
-        namespace: row.namespace ? String(row.namespace) : undefined,
-        updatedAt: row.updatedAt ?? row.updated_at,
-        source: 'onetool',
-    };
-}
+import {
+    ONETOOL_METADATA_PAGE_SIZE,
+    ONETOOL_NAME_PATTERN,
+    ONETOOL_SEARCH_TIMEOUT_MS,
+    fetchJson,
+    packageToSearchResult,
+    pickBosUrl,
+    rowToSearchResult,
+    type OnetoolMetaRow,
+} from './onetool-util.js';
 
 export class OnetoolBackend extends BaseBackend {
     readonly id = 'onetool' as const;
@@ -89,7 +52,7 @@ export class OnetoolBackend extends BaseBackend {
             };
         try {
             const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), SEARCH_TIMEOUT_MS);
+            const timer = setTimeout(() => ctrl.abort(), ONETOOL_SEARCH_TIMEOUT_MS);
             const res = await fetch(`${base}/skills/metadata`, { signal: ctrl.signal });
             clearTimeout(timer);
             if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
@@ -105,54 +68,82 @@ export class OnetoolBackend extends BaseBackend {
         const base = await this.apiBase();
         if (!base) throw new SkitError('E_BACKEND_UNAVAILABLE', 'onetool apiBase 未配置,无法 search');
         const limit = opts.limit ?? 20;
+        const q = query.trim();
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), SEARCH_TIMEOUT_MS);
-        let json: { code?: number; data?: OnetoolMetaRow[]; message?: string };
+        const timer = setTimeout(() => ctrl.abort(), ONETOOL_SEARCH_TIMEOUT_MS);
         try {
-            const res = await fetch(`${base}/skills/metadata`, { signal: ctrl.signal });
-            if (!res.ok) throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool search HTTP ${res.status}`);
-            json = (await res.json()) as { code?: number; data?: OnetoolMetaRow[]; message?: string };
+            // 1) kebab-case 精确名优先走 package (不受 metadata 分页截断影响)
+            if (ONETOOL_NAME_PATTERN.test(q)) {
+                const exact = await this.searchByPackage(base, q, ctrl.signal);
+                if (exact) return [exact];
+            }
+            // 2) 未命中 / 非精确名 → metadata 模糊兜底
+            return await this.searchByMetadata(base, q, limit, ctrl.signal);
         } catch (err) {
             if (err instanceof SkitError) throw err;
             throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool search failed: ${(err as Error).message}`);
         } finally {
             clearTimeout(timer);
         }
-        if (json.code !== 200)
-            throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool search code ${json.code}: ${json.message ?? ''}`);
-        const rows = Array.isArray(json.data) ? json.data : [];
+    }
+
+    /** GET /skills/package?skillIdentifier=<name>; 404 返回 null */
+    private async searchByPackage(
+        base: string,
+        skillName: string,
+        signal: AbortSignal
+    ): Promise<SearchResult | null> {
+        const url = `${base}/skills/package?skillIdentifier=${encodeURIComponent(skillName)}`;
+        const { ok, status, json } = await fetchJson(url, signal);
+        const code = json.code as number | undefined;
+        // 仅 404 视为未命中;其它 HTTP/业务错误向上抛,交给 searcher 回退 github
+        if (status === 404 || code === 404) return null;
+        if (!ok) {
+            throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool package HTTP ${status}`);
+        }
+        if (code !== 200) {
+            throw new SkitError(
+                'E_BACKEND_UNAVAILABLE',
+                `onetool package code ${code}: ${String(json.message ?? '')}`
+            );
+        }
+        const data = json.data;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+        return packageToSearchResult(skillName, data as Record<string, unknown>);
+    }
+
+    /** GET /skills/metadata?pageSize=… 本地 name/description 包含匹配 */
+    private async searchByMetadata(
+        base: string,
+        query: string,
+        limit: number,
+        signal: AbortSignal
+    ): Promise<SearchResult[]> {
+        const url = `${base}/skills/metadata?pageSize=${ONETOOL_METADATA_PAGE_SIZE}`;
+        const { ok, status, json } = await fetchJson(url, signal);
+        if (!ok) throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool search HTTP ${status}`);
+        if (json.code !== 200) {
+            throw new SkitError(
+                'E_BACKEND_UNAVAILABLE',
+                `onetool search code ${json.code}: ${String(json.message ?? '')}`
+            );
+        }
+        const rows = Array.isArray(json.data) ? (json.data as OnetoolMetaRow[]) : [];
         const q = query.toLowerCase();
-        const matched = rows
+        return rows
             .map(rowToSearchResult)
             .filter((r): r is SearchResult => r !== null)
-            .filter(r => {
-                if (!q) return true;
-                return r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q);
-            });
-        return matched.slice(0, limit);
+            .filter(r => !q || r.name.toLowerCase().includes(q) || r.description.toLowerCase().includes(q))
+            .slice(0, limit);
     }
 
     async resolve(ref: string): Promise<ResolvedSource> {
-        if (!NAME_PATTERN.test(ref)) {
+        if (!ONETOOL_NAME_PATTERN.test(ref)) {
             throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool backend 仅支持 kebab-case 名称: ${ref}`);
         }
         const base = await this.apiBase();
         if (!base) throw new SkitError('E_BACKEND_UNAVAILABLE', 'onetool apiBase 未配置,无法 resolve');
-        // 1) metadata 查最新 version
-        let version: string | undefined;
-        try {
-            const metaRes = await fetch(`${base}/skills/metadata`);
-            if (metaRes.ok) {
-                const metaJson = (await metaRes.json()) as { code?: number; data?: OnetoolMetaRow[] };
-                if (metaJson.code === 200 && Array.isArray(metaJson.data)) {
-                    const hit = metaJson.data.find(r => (r.skillName ?? r.skill_name ?? r.name) === ref);
-                    version = hit?.version ? String(hit.version) : undefined;
-                }
-            }
-        } catch {
-            // metadata 失败不阻断,继续走 package 端点
-        }
-        // 2) package 端点取 BOS URL
+        // package 端点取 BOS URL + 版本 (比 metadata 全量扫描更准,也避开分页截断)
         const pkgRes = await fetch(`${base}/skills/package?skillIdentifier=${encodeURIComponent(ref)}`);
         if (!pkgRes.ok) {
             throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool package HTTP ${pkgRes.status} for ${ref}`);
@@ -168,10 +159,12 @@ export class OnetoolBackend extends BaseBackend {
                 `onetool package code ${pkgJson.code} for ${ref}: ${pkgJson.message ?? ''}`
             );
         }
-        const bosUrl = pickBosUrl(pkgJson.data ?? {});
+        const data = pkgJson.data ?? {};
+        const bosUrl = pickBosUrl(data);
         if (!bosUrl) {
             throw new SkitError('E_BACKEND_UNAVAILABLE', `onetool package 未返回 bosUrl for ${ref}`);
         }
+        const version = data.version != null ? String(data.version) : undefined;
         return {
             ref,
             kind: 'registry',

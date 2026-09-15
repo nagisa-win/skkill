@@ -83,6 +83,8 @@ publisher:
 #     enabled: true
 #   comate:
 #     skillsDirOverride: ~/.comate/skills
+#   opencode:
+#     skillsDirOverride: ~/.config/opencode/skills
 `;
 
 export function buildConfigTemplate(): string {
