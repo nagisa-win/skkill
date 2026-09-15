@@ -73,12 +73,18 @@ export function getInstallRoot(config: ConfigFile): string {
     return config.installRoot ?? DEFAULT_INSTALL_ROOT;
 }
 
-// 解析指定 agent 的 effective skills 目录:override > 环境变量 > fallback
-export function resolveAgentSkillsDir(agentId: AgentId, config: AgentConfigInput, fallback: string): string {
+// 解析指定 agent 的 effective skills 目录:override > 环境变量 (+envSubPath) > fallback
+// envSubPath: 部分 agent 的 env home 需要拼子路径,如 opencode 的 $XDG_CONFIG_HOME/opencode/skills
+export function resolveAgentSkillsDir(
+    agentId: AgentId,
+    config: AgentConfigInput,
+    fallback: string,
+    envSubPath?: string
+): string {
     const override = config.agents?.[agentId]?.skillsDirOverride;
     if (override) return override;
     const envVar = AGENT_HOME_ENV[agentId];
     const envHome = envVar ? process.env[envVar] : undefined;
-    if (envHome) return path.join(envHome, 'skills');
+    if (envHome) return path.join(envHome, ...(envSubPath ? [envSubPath] : []), 'skills');
     return fallback;
 }

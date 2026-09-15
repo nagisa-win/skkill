@@ -8,11 +8,14 @@ export abstract class BaseAdapter implements Omit<AgentAdapter, 'apply' | 'unapp
     abstract readonly displayName: string;
     abstract readonly homeEnvVar?: string;
 
+    // env home 与 skills 目录之间的子路径,如 opencode 需要拼 'opencode' ($XDG_CONFIG_HOME/opencode/skills)
+    envSkillsSubPath?: string;
+
     defaultSkillsDir(): string {
         return DEFAULT_SKILLS_DIRS[this.id];
     }
 
     async detectSkillsDir(config: AgentConfigInput): Promise<string> {
-        return resolveAgentSkillsDir(this.id, config, this.defaultSkillsDir());
+        return resolveAgentSkillsDir(this.id, config, this.defaultSkillsDir(), this.envSkillsSubPath);
     }
 }

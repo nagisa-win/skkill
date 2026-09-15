@@ -97,7 +97,7 @@ skkill install https://github.com/owner/repo -a claudecode   # 任意 git URL
 安装路径:`~/.skkill/skills/<name>/`。再用 `link` 软链接到 Agent:
 
 ```bash
-skkill link claudecode    # 目标: claudecode | codex | comate,也支持 `skkill link all`
+skkill link claudecode    # 目标: claudecode | codex | comate | opencode,也支持 `skkill link all`
 ```
 
 ### 从其他 Agent 迁移 Skill
