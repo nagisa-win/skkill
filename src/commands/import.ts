@@ -34,10 +34,7 @@ export async function importCommand(
 
     // 源必须在 installRoot 外: 复用 sanitize.isPathSafe 反向判定, 不重复造轮子
     if (isPathSafe(installRoot, absSource)) {
-        throw new SkitError(
-            'E_INVALID_INPUT',
-            `源 ${absSource} 在 ${installRoot} 内, 拒绝 import 自己管理的 skill`
-        );
+        throw new SkitError('E_INVALID_INPUT', `源 ${absSource} 在 ${installRoot} 内, 拒绝 import 自己管理的 skill`);
     }
 
     // 一次 readSkillMd 同时校验存在 + 解析 frontmatter (省一次 pathExists + 一次 readFile)
@@ -87,9 +84,7 @@ export async function importCommand(
     }
 
     // 并行清理 skkill 内部文件 (.skill-lock.json 残留会让两个 skkill 实例状态混淆)
-    await Promise.all(
-        SKKILL_INTERNAL_FILES.map(f => fs.unlink(path.join(destPath, f)).catch(() => undefined))
-    );
+    await Promise.all(SKKILL_INTERNAL_FILES.map(f => fs.unlink(path.join(destPath, f)).catch(() => undefined)));
 
     const sourceUrl = `file://${absSource}`;
     await ensureManifest(destPath, {
@@ -126,7 +121,7 @@ export async function importCommand(
             frontmatter,
             appliedAgents: [],
         };
-        const results = await applyToAgents(skill, adapters);
+        const results = await applyToAgents(skill, adapters, config);
         for (const r of results) {
             if (r.error) logger.warn(`${r.agentId}: ${r.error}`);
             else logger.success(`Linked to ${r.agentId}`);

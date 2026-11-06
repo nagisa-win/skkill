@@ -20,7 +20,13 @@ interface SkillRow {
 export async function listCommand(opts: { json?: boolean } = {}): Promise<void> {
     const config = await loadConfig();
     const installRoot = getInstallRoot(config);
-    const adapters = [...AVAILABLE_AGENTS];
+    /** 提前解析每个 agent 的 effective skills 目录,env ($DSH_HOME 等) / config override 与 link 保持一致 */
+    const agentDirs = await Promise.all(
+        AVAILABLE_AGENTS.map(async adapter => ({
+            adapter,
+            skillsDir: await adapter.detectSkillsDir(config),
+        }))
+    );
 
     let entries: string[];
     try {
@@ -42,11 +48,11 @@ export async function listCommand(opts: { json?: boolean } = {}): Promise<void> 
         const { frontmatter } = await readSkillMd(skillPath);
         const skkillMeta = pkg?.skkill ?? {};
         const applied: { id: string; linkedAt: string }[] = [];
-        for (const a of adapters) {
-            const linkPath = path.join(a.defaultSkillsDir(), name);
+        for (const { adapter, skillsDir } of agentDirs) {
+            const linkPath = path.join(skillsDir, name);
             const lst = await fs.lstat(linkPath).catch(() => null);
             if (lst?.isSymbolicLink()) {
-                applied.push({ id: a.id, linkedAt: lst.mtime.toISOString() });
+                applied.push({ id: adapter.id, linkedAt: lst.mtime.toISOString() });
             }
         }
         rows.push({
@@ -79,9 +85,10 @@ function printTable(installRoot: string, rows: SkillRow[]): void {
         return;
     }
 
-    // 列宽自适应: 取所有行的最大值,但不超过上限
+    // 列宽自适应: NAME/VERSION 有上限;LINKED 随 agent 数量增长,否则 dsh 加入后会被截断
     const NAME_W = Math.min(Math.max(8, ...rows.map(r => visibleLen(r.name))), 28);
     const VER_W = Math.min(Math.max(5, ...rows.map(r => visibleLen(r.version))), 12);
+    const LINKED_W = Math.max(6, ...rows.map(r => visibleLen(stripAnsi(formatLinked(r.applied)))));
 
     // 头
     const header =
@@ -90,7 +97,7 @@ function printTable(installRoot: string, rows: SkillRow[]): void {
         '  ' +
         pad('VERSION', VER_W, 'left') +
         '  ' +
-        pad('LINKED', 28, 'left') +
+        pad('LINKED', LINKED_W, 'left') +
         '  ' +
         'UPDATED';
     console.log(header);
@@ -102,7 +109,7 @@ function printTable(installRoot: string, rows: SkillRow[]): void {
         const updated = formatUpdated(r);
         const nameCol = chalk.cyan(pad(r.name, NAME_W, 'left'));
         const verCol = chalk.dim(pad(r.version, VER_W, 'left'));
-        const linkedCol = pad(linked, 28, 'left');
+        const linkedCol = pad(linked, LINKED_W, 'left');
         const updatedCol = updated;
         console.log(`  ${nameCol}  ${verCol}  ${linkedCol}  ${updatedCol}`);
     }
@@ -176,9 +183,9 @@ function pad(s: string, width: number, dir: 'left' | 'right'): string {
     return dir === 'left' ? s + fill : fill + s;
 }
 
+/** 可见宽度: 去掉 ANSI 转义后再计长度,否则带颜色的 LINKED 列会把表头撑歪 */
 function visibleLen(s: string): number {
-    // chalk 输出含 ANSI, 但我们 pad 时用的就是 plain 字符串,这里只在统计纯文本宽度
-    return s.length;
+    return stripAnsi(s).length;
 }
 
 function stripAnsi(s: string): string {

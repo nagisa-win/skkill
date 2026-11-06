@@ -14,6 +14,8 @@ export const DEFAULT_SKILLS_DIRS = {
     codex: path.join(os.homedir(), '.codex', 'skills'),
     comate: path.join(os.homedir(), '.comate', 'skills'),
     opencode: path.join(os.homedir(), '.config', 'opencode', 'skills'),
+    // DeepSeek Harness 全局 skill 根目录: $DSH_HOME/skills (默认 ~/.dsh/skills)
+    dsh: path.join(os.homedir(), '.dsh', 'skills'),
     openclaw: path.join(os.homedir(), '.openclaw', 'skills'),
     cursor: path.join(os.homedir(), '.cursor', 'skills'),
     continue: path.join(os.homedir(), '.continue', 'skills'),
@@ -25,6 +27,7 @@ export const AGENT_HOME_ENV = {
     codex: 'CODEX_HOME',
     comate: 'COMATE_HOME',
     opencode: 'XDG_CONFIG_HOME',
+    dsh: 'DSH_HOME',
     openclaw: 'OPENCLAW_HOME',
     cursor: 'CURSOR_HOME',
     continue: 'CONTINUE_GLOBAL_DIR',

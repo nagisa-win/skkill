@@ -9,7 +9,7 @@
 
 ## 概述
 
-**skkill** 是一个面向 AI Agent Skill 的跨平台包管理器。它把分散在多个 Agent (Claude Code / Codex / Comate / OpenCode / Cursor / Aider 等) 的 Skill 统一安装到 `~/.skkill/skills/`,再通过软链接一键分发到目标 Agent,做到一处升级、处处生效。
+**skkill** 是一个面向 AI Agent Skill 的跨平台包管理器。它把分散在多个 Agent (Claude Code / Codex / Comate / OpenCode / DeepSeek Harness / Cursor / Aider 等) 的 Skill 统一安装到 `~/.skkill/skills/`,再通过软链接一键分发到目标 Agent,做到一处升级、处处生效。
 
 后端默认走 [onetool](https://bj.bcebos.com/onetool/skills-json) (百度内网 Skill 平台) 走 BOS zip 下载,自动兜底 GitHub `skill` 关键字搜索。
 
@@ -20,6 +20,7 @@
 - **本地校验** — frontmatter / 命令安全 / 资源可发现性 / 描述质量全查
 - **oneskill 联动发布** — shell out `oneskill create/update` 完成内网发布,自动回写 skill_id
 - **跨 Agent 迁移** — `import` 把别处的 skill 目录 mv 到 `~/.skkill/skills/` 并接管管理
+- **DeepSeek Harness 支持** — 以 `dsh` 为目标,把已安装 Skill 软链到 `$DSH_HOME/skills` (默认 `~/.dsh/skills`)
 - **Git 兜底** — `git@…` URL 或 `owner/repo` 简写自动走 git backend,跨仓库结构都能正确识别 SKILL.md
 
 ## 快速上手
@@ -72,10 +73,10 @@ SKKILL_BACKEND_ONETOOL_API_BASE=http://env-override.example.com/api/v1 \
 
 #### 必需配置 (只有发布到内网才需要)
 
-| ConfigKey                 | 环境变量                                                         | 用途                                                      |
-| ------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------- |
-| `backend.onetool.apiBase` | `SKKILL_BACKEND_ONETOOL_API_BASE`                                | onetool 内网 API 地址,留空则自动回退 GitHub               |
-| `publisher.bin`           | `SKKILL_PUBLISHER_BIN`                                           | oneskill CLI 路径,默认探测 `~/.oneskill-cli/bin/oneskill` |
+| ConfigKey                 | 环境变量                          | 用途                                                      |
+| ------------------------- | --------------------------------- | --------------------------------------------------------- |
+| `backend.onetool.apiBase` | `SKKILL_BACKEND_ONETOOL_API_BASE` | onetool 内网 API 地址,留空则自动回退 GitHub               |
+| `publisher.bin`           | `SKKILL_PUBLISHER_BIN`            | oneskill CLI 路径,默认探测 `~/.oneskill-cli/bin/oneskill` |
 
 其它配置 (GitHub token、LLM model、install root、publisher.minVersion 等) 都有合理默认值。
 
@@ -97,8 +98,17 @@ skkill install https://github.com/owner/repo -a claudecode   # 任意 git URL
 安装路径:`~/.skkill/skills/<name>/`。再用 `link` 软链接到 Agent:
 
 ```bash
-skkill link claudecode    # 目标: claudecode | codex | comate | opencode,也支持 `skkill link all`
+skkill link claudecode    # 目标: claudecode | codex | comate | opencode | dsh,也支持 `skkill link all`
 ```
+
+DeepSeek Harness 的全局 Skill 目录是 `$DSH_HOME/skills` (默认 `~/.dsh/skills`)。DSH 会扫描 `<name>/SKILL.md` 目录 bundle 并支持符号链接:
+
+```bash
+skkill link dsh                        # 把 ~/.skkill/skills/ 下全部 Skill 链到 DSH
+DSH_HOME=/custom/dsh skkill link dsh   # 自定义 DSH_HOME 时同样生效
+```
+
+如需换到其它目录,可在 `~/.skkill/config.yaml` 里设置 `agents.dsh.skillsDirOverride`。
 
 ### 从其他 Agent 迁移 Skill
 
