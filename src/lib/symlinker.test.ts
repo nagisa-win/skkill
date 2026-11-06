@@ -21,11 +21,14 @@ let skill: InstalledSkill;
 class FakeAdapter implements BaseAdapter {
     readonly id = 'fake' as const;
     readonly displayName = 'Fake';
+
+    constructor(private readonly resolvedDir?: string) {}
+
     defaultSkillsDir(): string {
         return skillsDir;
     }
     async detectSkillsDir(): Promise<string> {
-        return skillsDir;
+        return this.resolvedDir ?? skillsDir;
     }
 }
 
@@ -66,6 +69,13 @@ describe('applySkillToAgent', () => {
         // 再调一次,不应该报错
         const second = await applySkillToAgent(adapter, skill);
         expect(second.linkedAt).toBeDefined();
+    });
+
+    it('uses detectSkillsDir result instead of defaultSkillsDir', async () => {
+        const resolvedDir = path.join(workDir, 'resolved-skills');
+        await applySkillToAgent(new FakeAdapter(resolvedDir), skill);
+        expect((await fs.lstat(path.join(resolvedDir, 'my-skill'))).isSymbolicLink()).toBe(true);
+        expect(await fs.lstat(path.join(skillsDir, 'my-skill')).catch(() => null)).toBeNull();
     });
 
     it('throws E_NOT_SYMLINK when target exists and is a real directory', async () => {

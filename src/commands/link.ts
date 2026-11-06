@@ -59,7 +59,7 @@ export async function linkCommand(target: string): Promise<void> {
                 frontmatter,
                 appliedAgents: [],
             };
-            const results = await applyToAgents(skill, adapters);
+            const results = await applyToAgents(skill, adapters, config);
             // 逐条打印失败原因,否则汇总里的 broken 计数无从排查
             for (const r of results) {
                 if (r.error) logger.warn(`Broken: ${name} -> ${r.agentId}: ${r.error}`);

@@ -85,6 +85,8 @@ publisher:
 #     skillsDirOverride: ~/.comate/skills
 #   opencode:
 #     skillsDirOverride: ~/.config/opencode/skills
+#   dsh:
+#     skillsDirOverride: ~/.dsh/skills
 `;
 
 export function buildConfigTemplate(): string {

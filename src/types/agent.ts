@@ -1,5 +1,14 @@
 // Agent 标识符联合类型
-export type AgentId = 'claudecode' | 'codex' | 'comate' | 'opencode' | 'openclaw' | 'cursor' | 'continue' | 'aider';
+export type AgentId =
+    | 'claudecode'
+    | 'codex'
+    | 'comate'
+    | 'opencode'
+    | 'dsh'
+    | 'openclaw'
+    | 'cursor'
+    | 'continue'
+    | 'aider';
 
 // detectSkillsDir 接受的配置子集(避免循环依赖)
 export interface AgentConfigInput {

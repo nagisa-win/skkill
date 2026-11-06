@@ -3,6 +3,7 @@ import type { BaseAdapter } from './base.js';
 import { ClaudeCodeAdapter } from './claude.js';
 import { CodexAdapter } from './codex.js';
 import { ComateAdapter } from './comate.js';
+import { DshAdapter } from './dsh.js';
 import { OpenCodeAdapter } from './opencode.js';
 
 // v1 已实现的 adapter
@@ -11,6 +12,7 @@ const implemented: Partial<Record<AgentId, BaseAdapter>> = {
     codex: new CodexAdapter(),
     comate: new ComateAdapter(),
     opencode: new OpenCodeAdapter(),
+    dsh: new DshAdapter(),
 };
 
 // v1 可用列表(实际可用的 agent)

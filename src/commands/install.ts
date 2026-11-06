@@ -41,7 +41,7 @@ export async function installCommand(ref: string, opts: { agents?: string[] } = 
         .map(id => getAgent(id as never))
         .filter((a): a is NonNullable<typeof a> => a !== undefined);
 
-    const results = await applyToAgents(skill, adapters);
+    const results = await applyToAgents(skill, adapters, config);
     for (const r of results) {
         if (r.error) logger.warn(`${r.agentId}: ${r.error}`);
         else logger.success(`Linked to ${r.agentId}`);

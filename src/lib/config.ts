@@ -1,7 +1,7 @@
 import path from 'node:path';
 import YAML from 'yaml';
 import { CONFIG_PATH, SKKILL_HOME, DEFAULT_INSTALL_ROOT, AGENT_HOME_ENV } from '../constants.js';
-import { ensureDir } from '../utils/paths.js';
+import { ensureDir, expandHome } from '../utils/paths.js';
 import { atomicWrite, readFileOrNull } from '../utils/fs.js';
 import { SkitError, logger } from '../utils/logger.js';
 import { buildConfigTemplate } from './config-template.js';
@@ -73,8 +73,10 @@ export function getInstallRoot(config: ConfigFile): string {
     return config.installRoot ?? DEFAULT_INSTALL_ROOT;
 }
 
-// 解析指定 agent 的 effective skills 目录:override > 环境变量 (+envSubPath) > fallback
-// envSubPath: 部分 agent 的 env home 需要拼子路径,如 opencode 的 $XDG_CONFIG_HOME/opencode/skills
+/**
+ * 解析指定 agent 的 effective skills 目录: override > 环境变量 (+envSubPath) > fallback。
+ * override/env 支持 `~` 展开,与 config 模板中的 `~/...` 写法保持一致。
+ */
 export function resolveAgentSkillsDir(
     agentId: AgentId,
     config: AgentConfigInput,
@@ -82,9 +84,9 @@ export function resolveAgentSkillsDir(
     envSubPath?: string
 ): string {
     const override = config.agents?.[agentId]?.skillsDirOverride;
-    if (override) return override;
+    if (override) return expandHome(override);
     const envVar = AGENT_HOME_ENV[agentId];
     const envHome = envVar ? process.env[envVar] : undefined;
-    if (envHome) return path.join(envHome, ...(envSubPath ? [envSubPath] : []), 'skills');
+    if (envHome) return path.join(expandHome(envHome), ...(envSubPath ? [envSubPath] : []), 'skills');
     return fallback;
 }

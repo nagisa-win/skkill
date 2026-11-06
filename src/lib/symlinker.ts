@@ -5,11 +5,22 @@ import { logger, SkitError } from '../utils/logger.js';
 import { assertPathSafe } from '../utils/sanitize.js';
 import type { BaseAdapter } from '../agents/base.js';
 import type { InstalledSkill } from '../types/skill.js';
-import type { AgentId } from '../types/agent.js';
+import type { AgentId, AgentConfigInput } from '../types/agent.js';
+
+/**
+ * 解析 effective skills 目录: env ($DSH_HOME 等) 与 config skillsDirOverride 必须对 link/unlink 同样生效。
+ */
+async function resolveSkillsDir(adapter: BaseAdapter, config?: AgentConfigInput): Promise<string> {
+    return adapter.detectSkillsDir(config ?? {});
+}
 
 // 创建软链接: <skillsDir>/<name> -> <skill.path>
-export async function applySkillToAgent(adapter: BaseAdapter, skill: InstalledSkill): Promise<{ linkedAt: string }> {
-    const skillsDir = adapter.defaultSkillsDir();
+export async function applySkillToAgent(
+    adapter: BaseAdapter,
+    skill: InstalledSkill,
+    config?: AgentConfigInput
+): Promise<{ linkedAt: string }> {
+    const skillsDir = await resolveSkillsDir(adapter, config);
     const linkPath = path.join(skillsDir, skill.name);
     assertPathSafe(skillsDir, linkPath);
     await ensureDir(skillsDir);
@@ -34,8 +45,12 @@ export async function applySkillToAgent(adapter: BaseAdapter, skill: InstalledSk
 }
 
 // 移除软链接 (拒绝删除真实目录)
-export async function unapplySkillFromAgent(adapter: BaseAdapter, skillName: string): Promise<void> {
-    const skillsDir = adapter.defaultSkillsDir();
+export async function unapplySkillFromAgent(
+    adapter: BaseAdapter,
+    skillName: string,
+    config?: AgentConfigInput
+): Promise<void> {
+    const skillsDir = await resolveSkillsDir(adapter, config);
     const linkPath = path.join(skillsDir, skillName);
     assertPathSafe(skillsDir, linkPath);
     const stats = await fs.lstat(linkPath).catch(() => null);
@@ -48,8 +63,12 @@ export async function unapplySkillFromAgent(adapter: BaseAdapter, skillName: str
 }
 
 // 判断 skill 是否已软链接到该 agent
-export async function isSkillApplied(adapter: BaseAdapter, skillName: string): Promise<boolean> {
-    const linkPath = path.join(adapter.defaultSkillsDir(), skillName);
+export async function isSkillApplied(
+    adapter: BaseAdapter,
+    skillName: string,
+    config?: AgentConfigInput
+): Promise<boolean> {
+    const linkPath = path.join(await resolveSkillsDir(adapter, config), skillName);
     try {
         const stats = await fs.lstat(linkPath);
         return stats.isSymbolicLink();
@@ -61,12 +80,13 @@ export async function isSkillApplied(adapter: BaseAdapter, skillName: string): P
 // 批量应用到多个 agents (跳过不可用的)
 export async function applyToAgents(
     skill: InstalledSkill,
-    adapters: BaseAdapter[]
+    adapters: BaseAdapter[],
+    config?: AgentConfigInput
 ): Promise<{ agentId: AgentId; linkedAt?: string; error?: string }[]> {
     const results: { agentId: AgentId; linkedAt?: string; error?: string }[] = [];
     for (const adapter of adapters) {
         try {
-            const { linkedAt } = await applySkillToAgent(adapter, skill);
+            const { linkedAt } = await applySkillToAgent(adapter, skill, config);
             results.push({ agentId: adapter.id, linkedAt });
         } catch (err) {
             results.push({ agentId: adapter.id, error: (err as Error).message });
@@ -78,12 +98,13 @@ export async function applyToAgents(
 // 从多个 agents 移除软链接
 export async function unapplyFromAgents(
     skillName: string,
-    adapters: BaseAdapter[]
+    adapters: BaseAdapter[],
+    config?: AgentConfigInput
 ): Promise<{ agentId: AgentId; removed: boolean; error?: string }[]> {
     const results: { agentId: AgentId; removed: boolean; error?: string }[] = [];
     for (const adapter of adapters) {
         try {
-            await unapplySkillFromAgent(adapter, skillName);
+            await unapplySkillFromAgent(adapter, skillName, config);
             results.push({ agentId: adapter.id, removed: true });
         } catch (err) {
             const e = err as NodeJS.ErrnoException & { code?: string };

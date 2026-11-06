@@ -19,7 +19,7 @@ export async function uninstallCommand(
         .map(id => getAgent(id as never))
         .filter((a): a is NonNullable<typeof a> => a !== undefined);
 
-    const results = await unapplyFromAgents(name, adapters);
+    const results = await unapplyFromAgents(name, adapters, config);
     // 逐条打印失败原因,与 link/unlink 保持一致
     for (const r of results) {
         if (r.error) logger.warn(`Broken: ${name} -> ${r.agentId}: ${r.error}`);
