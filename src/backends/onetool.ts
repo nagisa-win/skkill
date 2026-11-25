@@ -6,7 +6,15 @@ import { SkitError, logger } from '../utils/logger.js';
 import { ConfigKey } from '../constants.js';
 import { getConfigValue } from '../lib/config-resolver.js';
 import { loadConfigSilent } from '../lib/config.js';
-import { readPackageJson, syncVersionFromMeta } from '../lib/package-json.js';
+import {
+    readPackageJson,
+    writePackageJson,
+    syncVersionFromMeta,
+    readSkillMeta,
+    metaVersion,
+} from '../lib/package-json.js';
+import { readSkillMd } from '../lib/manifest.js';
+import type { SkillPackageJson } from '../types/skill.js';
 import type { ResolvedSource, FetchResult, SearchResult } from '../types/backend.js';
 import {
     ONETOOL_METADATA_PAGE_SIZE,
@@ -196,8 +204,9 @@ export class OnetoolBackend extends BaseBackend {
             await dir.extract({ path: targetDir });
             // zip 通常含 <name>/ 子目录;若有 SKILL.md 在子目录,把它上提到 targetDir
             const flatSkillDir = await flattenSkillDir(targetDir, skillName);
-            const pkg = await readPackageJson(flatSkillDir);
-            return { skillPath: flatSkillDir, version: pkg?.version ?? source.registryVersion };
+            // 安装源头就把 .skill-meta.json 的版本/元信息落到 package.json, 目录自带版本记忆
+            const appliedVersion = await materializeMetaPackageJson(flatSkillDir);
+            return { skillPath: flatSkillDir, version: appliedVersion ?? source.registryVersion };
         } finally {
             // 清理 zip 临时文件
             await fs.unlink(zipPath).catch(() => {});
@@ -225,6 +234,50 @@ export class OnetoolBackend extends BaseBackend {
             await fs2.rm(tmpDir, { recursive: true, force: true });
         }
     }
+}
+
+/**
+ * 把 .skill-meta.json (onetool 平台下发) 的版本号与元信息落到 package.json:
+ * 缺失则用 meta + SKILL.md frontmatter 生成一份, 已存在则对齐版本号.
+ * 保证 fetch 出的目录自带 package.json, 后续 upgrade 才能读到真实的 from 版本.
+ *
+ * @returns 落库后的版本号; meta 缺失/非法时返回 null
+ */
+async function materializeMetaPackageJson(skillDir: string): Promise<string | null> {
+    const meta = await readSkillMeta(skillDir);
+    const version = metaVersion(meta);
+    if (!meta || !version) return null;
+
+    const existing = await readPackageJson(skillDir);
+    if (existing) {
+        if (existing.version !== version) {
+            existing.version = version;
+            await writePackageJson(skillDir, existing);
+        }
+        return version;
+    }
+
+    // zip 未带 package.json: 用 meta 元信息 + frontmatter 描述生成
+    let description = 'Generated from .skill-meta.json by skkill';
+    try {
+        description = (await readSkillMd(skillDir)).frontmatter.description;
+    } catch {
+        // frontmatter 异常时用占位描述, 不阻断安装
+    }
+    const generated: SkillPackageJson = {
+        name: typeof meta.skill_name === 'string' && meta.skill_name ? meta.skill_name : path.basename(skillDir),
+        version,
+        description,
+        skkill: {
+            onetool: {
+                ...(typeof meta.namespace === 'string' ? { namespace: meta.namespace } : {}),
+                ...(meta.skill_id != null ? { skillId: String(meta.skill_id) } : {}),
+                ...(typeof meta.full_name === 'string' ? { fullName: meta.full_name } : {}),
+            },
+        },
+    };
+    await writePackageJson(skillDir, generated);
+    return version;
 }
 
 // 检测 unzip 后的目录布局:

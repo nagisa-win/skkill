@@ -30,6 +30,8 @@ export interface SkillPackageJson {
         installedAt?: string;
         upgradedAt?: string;
         checksum?: string;
+        // onetool 平台下发的元信息 (从 .skill-meta.json 落库)
+        onetool?: { namespace?: string; skillId?: string; fullName?: string };
     };
 }
 

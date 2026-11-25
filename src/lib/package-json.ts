@@ -73,6 +73,25 @@ export async function ensureManifest(
     return { pkg: generated, generated: true };
 }
 
+// 读取并解析 .skill-meta.json (onetool 平台下发的元信息); 缺失/解析失败返回 null
+export async function readSkillMeta(skillPath: string): Promise<Record<string, unknown> | null> {
+    const metaRaw = await fs.readFile(path.join(skillPath, META_JSON), 'utf-8').catch(() => null);
+    if (!metaRaw) return null;
+    try {
+        return JSON.parse(metaRaw) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
+// 从 meta 提取合法 semver 版本 (兼容 skill_version / v 前缀); 非法返回 null
+export function metaVersion(meta: Record<string, unknown> | null): string | null {
+    const rawVersion = meta?.version ?? meta?.skill_version;
+    if (typeof rawVersion !== 'string') return null;
+    const version = rawVersion.trim().replace(/^v/, '');
+    return SEMVER_RE.test(version) ? version : null;
+}
+
 /**
  * 读 .skill-meta.json 的 version (onetool 平台下发,是 skill 的真实版本),
  * 回写到 package.json.version, 让两者对齐.
@@ -83,21 +102,8 @@ export async function ensureManifest(
  * @returns 同步后的版本号; 未同步返回 null
  */
 export async function syncVersionFromMeta(skillPath: string): Promise<string | null> {
-    const metaRaw = await fs.readFile(path.join(skillPath, META_JSON), 'utf-8').catch(() => null);
-    if (!metaRaw) return null;
-
-    let meta: Record<string, unknown>;
-    try {
-        meta = JSON.parse(metaRaw) as Record<string, unknown>;
-    } catch {
-        return null;
-    }
-
-    // onetool 平台字段为 version; 防御性兼容 skill_version
-    const rawVersion = meta.version ?? meta.skill_version;
-    if (typeof rawVersion !== 'string') return null;
-    const version = rawVersion.trim().replace(/^v/, '');
-    if (!SEMVER_RE.test(version)) return null;
+    const version = metaVersion(await readSkillMeta(skillPath));
+    if (!version) return null;
 
     const pkg = await readPackageJson(skillPath);
     if (!pkg || pkg.version === version) return pkg?.version ?? null;

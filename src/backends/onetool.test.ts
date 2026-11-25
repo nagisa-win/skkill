@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { OnetoolBackend } from './onetool.js';
 import { packageToSearchResult, pickBosUrl, rowToSearchResult } from './onetool-util.js';
 
@@ -14,6 +17,59 @@ function jsonResponse(body: unknown, status = 200): Response {
         status,
         headers: { 'Content-Type': 'application/json' },
     });
+}
+
+// 最小 stored(不压缩) zip 构造器, 仅供测试生成 onetool 风格的 skill zip
+function crc32(buf: Buffer): number {
+    const table: number[] = [];
+    for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+        table[n] = c;
+    }
+    let crc = -1;
+    for (let i = 0; i < buf.length; i++) crc = (crc >>> 8) ^ table[(crc ^ buf[i]!) & 0xff]!;
+    return (crc ^ -1) >>> 0;
+}
+
+function makeZip(files: Record<string, string>): Buffer {
+    const locals: Buffer[] = [];
+    const centrals: Buffer[] = [];
+    let offset = 0;
+    for (const [name, content] of Object.entries(files)) {
+        const nameBuf = Buffer.from(name);
+        const data = Buffer.from(content);
+        const crc = crc32(data);
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4);
+        local.writeUInt16LE(0, 8); // stored
+        local.writeUInt32LE(crc, 14);
+        local.writeUInt32LE(data.length, 18);
+        local.writeUInt32LE(data.length, 22);
+        local.writeUInt16LE(nameBuf.length, 26);
+        locals.push(local, nameBuf, data);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4);
+        central.writeUInt16LE(20, 6);
+        central.writeUInt32LE(crc, 16);
+        central.writeUInt32LE(data.length, 20);
+        central.writeUInt32LE(data.length, 24);
+        central.writeUInt16LE(nameBuf.length, 28);
+        central.writeUInt32LE(offset, 42);
+        centrals.push(central, nameBuf);
+        offset += 30 + nameBuf.length + data.length;
+    }
+    const cdSize = centrals.reduce((s, b) => s + b.length, 0);
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    eocd.writeUInt16LE(Object.keys(files).length, 8);
+    eocd.writeUInt16LE(Object.keys(files).length, 10);
+    eocd.writeUInt32LE(cdSize, 12);
+    eocd.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, ...centrals, eocd]);
 }
 
 describe('onetool-util helpers', () => {
@@ -47,6 +103,45 @@ describe('onetool-util helpers', () => {
         expect(r?.name).toBe('popo');
         expect(r?.description).toBe('deploy pages');
         expect(r?.source).toBe('onetool');
+    });
+});
+
+describe('OnetoolBackend.fetch', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('zip 无 package.json 时,从 .skill-meta.json 生成含版本与元信息的 package.json', async () => {
+        const zip = makeZip({
+            'popo/SKILL.md': '---\nname: popo\ndescription: deploy pages\n---\nbody',
+            'popo/.skill-meta.json': JSON.stringify({
+                full_name: 'popo',
+                skill_name: 'popo',
+                namespace: 'demo-ns',
+                skill_id: '1234',
+                version: '1.0.16',
+            }),
+        });
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(zip, { status: 200 })));
+
+        const backend = new OnetoolBackend();
+        const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'skkill-test-'));
+        try {
+            const result = await backend.fetch(
+                { ref: 'popo', kind: 'registry', package: 'popo', downloadUrl: 'https://cdn/popo.zip' },
+                tmp
+            );
+            expect(result.version).toBe('1.0.16');
+            const pkg = JSON.parse(await fs.readFile(path.join(result.skillPath, 'package.json'), 'utf-8'));
+            expect(pkg).toMatchObject({
+                name: 'popo',
+                version: '1.0.16',
+                description: 'deploy pages',
+                skkill: { onetool: { namespace: 'demo-ns', skillId: '1234', fullName: 'popo' } },
+            });
+        } finally {
+            await fs.rm(tmp, { recursive: true, force: true });
+        }
     });
 });
 
